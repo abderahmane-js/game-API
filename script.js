@@ -1,0 +1,228 @@
+/* =========================================================
+   Game Diary — script.js
+   Modal logic + RAWG-backed game rendering
+   ========================================================= */
+
+// ---- RAWG API config -------------------------------------------------
+const API_KEY = 'YOUR_RAWG_API_KEY'; // <- replace with your RAWG key
+const API_BASE = 'https://api.rawg.io/api/games';
+
+// Cover gradients cycled for games with no background_image
+const COVER_FALLBACKS = [
+  'linear-gradient(160deg,#2c1b4d,#0f0a1e)',
+  'linear-gradient(160deg,#123326,#081712)',
+  'linear-gradient(160deg,#331414,#160707)',
+  'linear-gradient(160deg,#123143,#050f16)',
+  'linear-gradient(160deg,#3a2a10,#170f04)',
+  'linear-gradient(160deg,#1c1c3d,#08081a)',
+];
+
+// Offline / error fallback sample data, shaped like RAWG results
+// so renderGames() doesn't need to branch on data source.
+const FALLBACK_GAMES = [
+  { name: 'Elden Ring',       background_image: null, genres: [{ name: 'Action RPG' }],   rating: 4.8,  released: '2022-02-25' },
+  { name: 'Hollow Knight',    background_image: null, genres: [{ name: 'Metroidvania' }], rating: 4.5,  released: '2017-02-24' },
+  { name: 'Hades',            background_image: null, genres: [{ name: 'Roguelike' }],    rating: 4.65, released: '2020-09-17' },
+  { name: "Baldur's Gate 3",  background_image: null, genres: [{ name: 'RPG' }],          rating: 4.85, released: '2023-08-03' },
+  { name: 'Stardew Valley',   background_image: null, genres: [{ name: 'Simulation' }],   rating: 4.55, released: '2016-02-26' },
+  { name: 'Celeste',          background_image: null, genres: [{ name: 'Platformer' }],   rating: 4.6,  released: '2018-01-25' },
+];
+
+// ---- DOM refs ----------------------------------------------------------
+const gameGrid   = document.querySelector('.game-grid');
+const overlay    = document.getElementById('logModal');
+const modalTitle = document.getElementById('modalGameTitle');
+const modalYear  = document.querySelector('.modal-year');
+const modalCover = document.querySelector('.modal-cover');
+const starPicker  = document.getElementById('starPicker');
+const starFill    = document.getElementById('starFill');
+const starHitlayer = document.getElementById('starHitlayer');
+const starValue   = document.getElementById('starValue');
+let currentRating = 0;
+
+// Build 20 half-star hit zones (0.5 through 10 in 0.5 steps) once.
+for (let i = 1; i <= 20; i++) {
+  const value = i * 0.5;
+  const hit = document.createElement('button');
+  hit.type = 'button';
+  hit.className = 'star-hit';
+  hit.dataset.value = value;
+  hit.setAttribute('aria-label', `Rate ${value} out of 10`);
+  starHitlayer.appendChild(hit);
+}
+const starHits = starHitlayer.querySelectorAll('.star-hit');
+
+function setStarDisplay(value) {
+  starFill.style.setProperty('--pct', (value / 10) * 100 + '%');
+}
+
+function commitRating(value) {
+  currentRating = value;
+  setStarDisplay(value);
+  starValue.textContent = `${value} / 10`;
+  starHitlayer.setAttribute('aria-valuenow', value);
+}
+
+starHits.forEach(hit => {
+  const val = Number(hit.dataset.value);
+  hit.addEventListener('mouseenter', () => setStarDisplay(val));
+  hit.addEventListener('click', () => commitRating(val));
+});
+starPicker.addEventListener('mouseleave', () => setStarDisplay(currentRating));
+
+
+// =========================================================
+// Modal open / close + rating-picker sync
+// (ported as-is from the original inline <script>, plus a
+// reset step so a new card doesn't inherit the last pick)
+// =========================================================
+function openModal({ title = 'Untitled', year = '', cover = '' } = {}) {
+  modalTitle.textContent = title;
+  if (modalYear) modalYear.textContent = year;
+  if (modalCover) modalCover.style.background = cover || COVER_FALLBACKS[0];
+
+  resetStarPicker();
+
+  overlay.classList.add('is-open');
+  overlay.setAttribute('aria-hidden', 'false');
+}
+
+function closeModal() {
+  overlay.classList.remove('is-open');
+  overlay.setAttribute('aria-hidden', 'true');
+}
+
+function resetStarPicker() {
+  currentRating = 0;
+  setStarDisplay(0);
+  starValue.textContent = '— / 10';
+  starHitlayer.setAttribute('aria-valuenow', 0);
+}
+
+document.getElementById('modalClose').addEventListener('click', closeModal);
+document.getElementById('modalCancel').addEventListener('click', closeModal);
+overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+
+// =========================================================
+// Rendering
+// =========================================================
+
+// RAWG's `rating` field is on a 0–5 scale; the UI is built for 0–10,
+// so it's doubled here and everywhere else a "/10" value is shown.
+function toTenScale(rawgRating) {
+  const n = Number(rawgRating);
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 2 * 10) / 10 : null;
+}
+
+function getYear(releasedDate) {
+  if (!releasedDate) return 'Unknown';
+  const year = new Date(releasedDate).getFullYear();
+  return Number.isFinite(year) ? year : 'Unknown';
+}
+
+function getGenre(genres) {
+  return (Array.isArray(genres) && genres.length && genres[0].name) ? genres[0].name : 'Unclassified';
+}
+
+function buildCard(game, index) {
+  const title    = game.name || 'Untitled';
+  const year     = getYear(game.released);
+  const genre    = getGenre(game.genres);
+  const rating10 = toTenScale(game.rating);
+  const pct      = rating10 !== null ? `${rating10 * 10}%` : '0%';
+  const badge    = rating10 !== null ? rating10.toFixed(1) : 'N/A';
+
+  const coverStyle = game.background_image
+    ? `background-image:url('${game.background_image}'); background-size:cover; background-position:center;`
+    : `background:${COVER_FALLBACKS[index % COVER_FALLBACKS.length]};`;
+
+  const glyph = title.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+
+  const card = document.createElement('article');
+  card.className = 'game-card';
+  card.innerHTML = `
+    <div class="card-cover" style="${coverStyle}">
+      ${game.background_image ? '' : `<span class="cover-glyph">${glyph}</span>`}
+      <span class="rating-badge">${badge}</span>
+      <div class="card-hover">
+        <button class="btn btn-log" data-open-modal>+ Log</button>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3 class="game-title" title="${title}">${title}</h3>
+      <p class="game-year">${year} · ${genre}</p>
+      <div class="star-rating" role="img" aria-label="${badge} out of 10 stars">
+        <span class="stars-fill" style="--pct:${pct}"></span>
+      </div>
+    </div>
+  `;
+
+  // Stash the data the modal needs on the button itself.
+  const logBtn = card.querySelector('[data-open-modal]');
+  logBtn.dataset.game = title;
+  logBtn.dataset.year = year;
+  logBtn.dataset.cover = game.background_image
+    ? `url('${game.background_image}')`
+    : COVER_FALLBACKS[index % COVER_FALLBACKS.length];
+
+  return card;
+}
+
+function renderGames(gameList) {
+  const games = Array.isArray(gameList) && gameList.length ? gameList : FALLBACK_GAMES;
+
+  gameGrid.innerHTML = '';
+  const fragment = document.createDocumentFragment();
+
+  games.forEach((game, index) => {
+    fragment.appendChild(buildCard(game, index));
+  });
+
+  gameGrid.appendChild(fragment);
+  attachLogButtonListeners();
+}
+
+// Dynamically wire every rendered card's "+ Log" button to the modal.
+function attachLogButtonListeners() {
+  gameGrid.querySelectorAll('[data-open-modal]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      openModal({
+        title: btn.dataset.game,
+        year: btn.dataset.year,
+        cover: btn.dataset.cover,
+      });
+    });
+  });
+}
+
+// =========================================================
+// RAWG fetch
+// =========================================================
+async function fetchGames(query = '') {
+  try {
+    const url = `${API_BASE}?key=${API_KEY}&search=${encodeURIComponent(query)}&page_size=6`;
+    const res = await fetch(url);
+
+    if (!res.ok) throw new Error(`RAWG request failed: ${res.status}`);
+
+    const data = await res.json();
+    const games = data.results && data.results.length ? data.results : FALLBACK_GAMES;
+    renderGames(games);
+  } catch (err) {
+    console.warn('RAWG fetch failed, showing sample data instead:', err.message);
+    renderGames(FALLBACK_GAMES);
+  }
+}
+
+// ---- Wire up the search bars to fetchGames() ----------------------------
+document.querySelector('.hero-search')?.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const query = e.target.querySelector('input').value.trim();
+  fetchGames(query);
+});
+
+// ---- Init ----------------------------------------------------------------
+document.addEventListener('DOMContentLoaded', () => {
+  fetchGames(); // falls back to FALLBACK_GAMES automatically if offline / no key
+});

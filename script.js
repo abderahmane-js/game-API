@@ -4,7 +4,7 @@
    ========================================================= */
 
 // ---- RAWG API config -------------------------------------------------
-const API_KEY = 'YOUR_RAWG_API_KEY'; // <- replace with your RAWG key
+const API_KEY = 'cdf0396863c347d49c5faaed011ecebf';
 const API_BASE = 'https://api.rawg.io/api/games';
 
 // Cover gradients cycled for games with no background_image
@@ -34,6 +34,11 @@ const overlay    = document.getElementById('logModal');
 const modalTitle = document.getElementById('modalGameTitle');
 const modalYear  = document.querySelector('.modal-year');
 const modalCover = document.querySelector('.modal-cover');
+const reviewText     = document.getElementById('reviewText');
+const playedBeforeCheck = document.getElementById('playedBeforeCheck');
+const completedCheck = document.getElementById('completedCheck');
+const modalSaveBtn   = document.getElementById('modalSave');
+let currentGame = { title: '', year: '' };
 const starPicker  = document.getElementById('starPicker');
 const starFill    = document.getElementById('starFill');
 const starHitlayer = document.getElementById('starHitlayer');
@@ -77,11 +82,15 @@ starPicker.addEventListener('mouseleave', () => setStarDisplay(currentRating));
 // reset step so a new card doesn't inherit the last pick)
 // =========================================================
 function openModal({ title = 'Untitled', year = '', cover = '' } = {}) {
+  currentGame = { title, year };
   modalTitle.textContent = title;
   if (modalYear) modalYear.textContent = year;
   if (modalCover) modalCover.style.background = cover || COVER_FALLBACKS[0];
 
   resetStarPicker();
+  reviewText.value = '';
+  playedBeforeCheck.checked = false;
+  completedCheck.checked = true;
 
   overlay.classList.add('is-open');
   overlay.setAttribute('aria-hidden', 'false');
@@ -99,6 +108,32 @@ function resetStarPicker() {
   starHitlayer.setAttribute('aria-valuenow', 0);
 }
 
+function saveEntry() {
+  const entry = {
+    game: currentGame.title,
+    year: currentGame.year,
+    rating: currentRating,
+    review: reviewText.value.trim(),
+    playedBefore: playedBeforeCheck.checked,
+    completed: completedCheck.checked,
+  };
+
+  // Static for now — no persistence yet. Swap this for a real
+  // save (localStorage / API) once the diary data model is settled.
+  console.log('Entry logged:', entry);
+
+  // Quick visual confirmation on the button itself.
+  const original = modalSaveBtn.textContent;
+  modalSaveBtn.textContent = 'Saved ✓';
+  modalSaveBtn.disabled = true;
+  setTimeout(() => {
+    modalSaveBtn.textContent = original;
+    modalSaveBtn.disabled = false;
+    closeModal();
+  }, 500);
+}
+
+modalSaveBtn.addEventListener('click', saveEntry);
 document.getElementById('modalClose').addEventListener('click', closeModal);
 document.getElementById('modalCancel').addEventListener('click', closeModal);
 overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });

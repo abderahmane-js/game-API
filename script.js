@@ -28,6 +28,18 @@ const FALLBACK_GAMES = [
   { name: 'Celeste',          background_image: null, genres: [{ name: 'Platformer' }],   rating: 4.6,  released: '2018-01-25' },
 ];
 
+// ---- Animation helper --------------------------------------------------
+// All motion lives here instead of in CSS transitions/keyframes.
+const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function fx(el, keyframes, options = {}) {
+  if (!el || prefersReducedMotion) return { finished: Promise.resolve() };
+  return el.animate(keyframes, { duration: 180, easing: 'ease', fill: 'forwards', ...options });
+}
+
+const CARD_REST  = { transform: 'translateY(0)',    boxShadow: '0 0 0 rgba(0,0,0,0)',    borderColor: '#232329' };
+const CARD_HOVER = { transform: 'translateY(-3px)', boxShadow: '0 12px 28px rgba(0,0,0,.45)', borderColor: '#2c8f5c' };
+
 // ---- DOM refs ----------------------------------------------------------
 const gameGrid   = document.querySelector('.game-grid');
 const overlay    = document.getElementById('logModal');
@@ -94,9 +106,24 @@ function openModal({ title = 'Untitled', year = '', cover = '' } = {}) {
 
   overlay.classList.add('is-open');
   overlay.setAttribute('aria-hidden', 'false');
+  const modalEl = overlay.querySelector('.modal');
+  fx(overlay, [{ opacity: 0 }, { opacity: 1 }], { duration: 160 });
+  fx(modalEl, [
+    { opacity: 0, transform: 'translateY(8px)' },
+    { opacity: 1, transform: 'translateY(0)' },
+  ], { duration: 180 });
 }
 
-function closeModal() {
+async function closeModal() {
+  const modalEl = overlay.querySelector('.modal');
+  const anims = [
+    fx(overlay, [{ opacity: 1 }, { opacity: 0 }], { duration: 140 }),
+    fx(modalEl, [
+      { opacity: 1, transform: 'translateY(0)' },
+      { opacity: 0, transform: 'translateY(8px)' },
+    ], { duration: 140 }),
+  ];
+  await Promise.all(anims.map(a => a.finished));
   overlay.classList.remove('is-open');
   overlay.setAttribute('aria-hidden', 'true');
 }
@@ -201,6 +228,17 @@ function buildCard(game, index) {
     ? `url('${game.background_image}')`
     : COVER_FALLBACKS[index % COVER_FALLBACKS.length];
 
+  // Hover lift + log-overlay fade (replaces the old CSS :hover transitions).
+  const overlayEl = card.querySelector('.card-hover');
+  card.addEventListener('mouseenter', () => {
+    fx(card, [CARD_REST, CARD_HOVER], { duration: 180 });
+    fx(overlayEl, [{ opacity: 0 }, { opacity: 1 }], { duration: 160 });
+  });
+  card.addEventListener('mouseleave', () => {
+    fx(card, [CARD_HOVER, CARD_REST], { duration: 160 });
+    fx(overlayEl, [{ opacity: 1 }, { opacity: 0 }], { duration: 140 });
+  });
+
   return card;
 }
 
@@ -255,6 +293,13 @@ document.querySelector('.hero-search')?.addEventListener('submit', (e) => {
   e.preventDefault();
   const query = e.target.querySelector('input').value.trim();
   fetchGames(query);
+});
+
+// ---- Button press bounce (delegated — covers static + rendered buttons) --
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.btn');
+  if (!btn) return;
+  fx(btn, [{ transform: 'scale(1)' }, { transform: 'scale(0.94)' }, { transform: 'scale(1)' }], { duration: 180 });
 });
 
 // ---- Init ----------------------------------------------------------------

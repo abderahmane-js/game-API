@@ -274,7 +274,18 @@ function attachLogButtonListeners() {
 // =========================================================
 async function fetchGames(query = '') {
   try {
-    const url = `${API_BASE}?key=${API_KEY}&search=${encodeURIComponent(query)}&page_size=6`;
+    const params = new URLSearchParams({ key: API_KEY, page_size: '6' });
+
+    if (query) {
+      params.set('search', query);
+    } else {
+      // No real diary data yet (favorites / rated games), so this is a
+      // stand-in: randomize the page of well-rated games each load.
+      params.set('ordering', '-rating');
+      params.set('page', String(Math.floor(Math.random() * 5) + 1));
+    }
+
+    const url = `${API_BASE}?${params.toString()}`;
     const res = await fetch(url);
 
     if (!res.ok) throw new Error(`RAWG request failed: ${res.status}`);

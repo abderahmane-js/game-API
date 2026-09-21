@@ -98,10 +98,10 @@ input,textarea{font-family:inherit}
 .game-title{margin:0 0 2px;font-size:14.5px;font-weight:600;letter-spacing:-.01em;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .game-year{margin:0 0 10px;font-size:12.5px;color:var(--text-faint)}
-.star-rating{position:relative;font-size:14px;letter-spacing:2px;color:var(--border);line-height:1}
-.star-rating::before{content:"★★★★★★★★★★"}
-.stars-fill{position:absolute;inset:0;overflow:hidden;width:var(--pct,0%);color:var(--accent-purple);white-space:nowrap}
-.stars-fill::before{content:"★★★★★★★★★★"}
+.star-rating{position:relative;width:92px;height:6px;border-radius:2px;overflow:hidden;
+  background:repeating-linear-gradient(90deg,var(--border) 0 8%,transparent 8% 10%)}
+.stars-fill{position:absolute;inset:0;overflow:hidden;width:var(--pct,0%);
+  background:repeating-linear-gradient(90deg,var(--accent-purple) 0 8%,transparent 8% 10%)}
 
 /* Footer */
 .site-footer{border-top:1px solid var(--border-soft);padding:28px 24px;text-align:center;
@@ -130,11 +130,11 @@ input,textarea{font-family:inherit}
 .modal-field textarea:focus{outline:none;border-color:var(--accent-green-dim)}
 
 /* Star picker (fill bar + half-star hit zones) */
-.star-picker{position:relative;display:inline-block;font-size:26px;line-height:1;letter-spacing:3px}
-.star-track,.star-fill{white-space:nowrap;pointer-events:none}
-.star-track::before,.star-fill::before{content:"★★★★★★★★★★"}
-.star-track{color:var(--border)}
-.star-fill{position:absolute;top:0;left:0;width:var(--pct,0%);overflow:hidden;color:var(--accent-purple)}
+.star-picker{position:relative;display:inline-block;width:220px;height:14px}
+.star-track{position:absolute;inset:0;overflow:hidden;border-radius:2px;
+  background:repeating-linear-gradient(90deg,var(--border) 0 8%,transparent 8% 10%)}
+.star-fill{position:absolute;inset:0;overflow:hidden;width:var(--pct,0%);border-radius:2px;
+  background:repeating-linear-gradient(90deg,var(--accent-purple) 0 8%,transparent 8% 10%)}
 .star-hitlayer{position:absolute;inset:0;display:flex}
 .star-hit{flex:1;height:100%;background:none;border:none;padding:0}
 .star-value{display:inline-block;margin-top:8px;font-size:13px;color:var(--text-muted);font-weight:600}

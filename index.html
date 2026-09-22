@@ -54,10 +54,11 @@
       </form>
 
       <div class="hero-stats">
-        <div class="stat"><span class="stat-num">1,204</span><span class="stat-label">entries logged today</span></div>
-        <div class="stat"><span class="stat-num">318</span><span class="stat-label">reviews written today</span></div>
-        <div class="stat"><span class="stat-num">42</span><span class="stat-label">games trending this week</span></div>
+        <div class="stat"><span class="stat-num" id="statGamesLogged">0</span><span class="stat-label">games logged</span></div>
+        <div class="stat"><span class="stat-num" id="statAverageRating">N/A</span><span class="stat-label">average rating</span></div>
+        <div class="stat"><span class="stat-num" id="statTopGenre">N/A</span><span class="stat-label">top genre</span></div>
       </div>
+      <p class="stats-empty" id="statsEmpty">Log your first game to start building your diary.</p>
     </div>
   </section>
 
@@ -179,6 +180,13 @@
       </article>
 
     </div>
+    <section class="top-rated-section" aria-labelledby="topRatedHeading">
+      <div class="section-heading">
+        <h2 id="topRatedHeading">Your top-rated games</h2>
+      </div>
+      <div class="top-rated-grid" id="topRatedShelf"></div>
+    </section>
+
   </main>
 
   <section class="main" id="diaryMain" hidden>

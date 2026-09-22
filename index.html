@@ -27,7 +27,7 @@
       <nav class="header-nav">
         <a href="#" id="navHome" class="nav-link is-active">Home</a>
         <a href="#" id="navDiary" class="nav-link">My Diary</a>
-        <a href="#" class="nav-link">Wishlist</a>
+        <a href="#" id="navWishlist" class="nav-link">Wishlist</a>
         <div class="avatar" role="img" aria-label="User avatar">B</div>
       </nav>
 
@@ -190,10 +190,22 @@
   </main>
 
   <section class="main" id="diaryMain" hidden>
-    <div class="section-heading diary-heading">
-      <h2>My Diary</h2>
+    <div class="diary-header">
+      <div>
+        <p class="diary-kicker">Your personal library</p>
+        <h2>My Diary</h2>
+      </div>
+      <div class="diary-summary" id="diarySummary"></div>
+    </div>
+
+    <div class="diary-toolbar">
+      <label class="diary-search">
+        <span aria-hidden="true">⌕</span>
+        <input id="diarySearch" type="search" placeholder="Search your diary..." autocomplete="off">
+      </label>
+
       <label class="sort-control">
-        <span>Sort by</span>
+        <span>Sort</span>
         <select id="diarySort">
           <option value="recent">Most recent</option>
           <option value="oldest">Oldest</option>
@@ -203,8 +215,40 @@
           <option value="name-z-a">Name Z–A</option>
         </select>
       </label>
+
+      <label class="sort-control">
+        <span>Status</span>
+        <select id="diaryStatus">
+          <option value="all">All</option>
+          <option value="completed">Completed</option>
+          <option value="playing">Playing</option>
+          <option value="backlog">Backlog</option>
+          <option value="dropped">Dropped</option>
+        </select>
+      </label>
+
+      <label class="sort-control">
+        <span>Genre</span>
+        <select id="diaryGenre">
+          <option value="all">All genres</option>
+        </select>
+      </label>
+
+      <button class="filter-toggle" id="diaryFavoritesOnly" type="button" aria-pressed="false">♡ Favorites</button>
     </div>
+
     <div class="diary-grid" id="diaryGrid"></div>
+  </section>
+
+  <section class="main wishlist-main" id="wishlistMain" hidden>
+    <div class="diary-header">
+      <div>
+        <p class="diary-kicker">Games you want to play</p>
+        <h2>Wishlist</h2>
+      </div>
+      <span class="wishlist-count" id="wishlistCount">0 games</span>
+    </div>
+    <div class="diary-grid" id="wishlistGrid"></div>
   </section>
 
   <footer class="site-footer">
@@ -241,13 +285,22 @@
       </div>
 
       <div class="modal-field modal-row">
+        <label class="sort-control modal-status">
+          <span>Status</span>
+          <select id="statusSelect">
+            <option value="backlog">Backlog</option>
+            <option value="playing">Playing</option>
+            <option value="completed">Completed</option>
+            <option value="dropped">Dropped</option>
+          </select>
+        </label>
         <label class="checkbox">
           <input type="checkbox" id="playedBeforeCheck">
           <span>Played before</span>
         </label>
         <label class="checkbox">
-          <input type="checkbox" id="completedCheck" checked>
-          <span>Completed</span>
+          <input type="checkbox" id="favoriteCheck">
+          <span>Favorite</span>
         </label>
       </div>
 

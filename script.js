@@ -62,8 +62,20 @@ const homeMain  = document.getElementById('homeMain');
 const diaryMain = document.getElementById('diaryMain');
 const diaryGrid = document.getElementById('diaryGrid');
 const diarySort = document.getElementById('diarySort');
+const diarySearch = document.getElementById('diarySearch');
+const diaryStatus = document.getElementById('diaryStatus');
+const diaryGenre = document.getElementById('diaryGenre');
+const diaryFavoritesOnly = document.getElementById('diaryFavoritesOnly');
+const diarySummary = document.getElementById('diarySummary');
+const wishlistMain = document.getElementById('wishlistMain');
+const wishlistGrid = document.getElementById('wishlistGrid');
+const wishlistCount = document.getElementById('wishlistCount');
 const navHome   = document.getElementById('navHome');
 const navDiary  = document.getElementById('navDiary');
+const navWishlist = document.getElementById('navWishlist');
+const statusSelect = document.getElementById('statusSelect');
+const favoriteCheck = document.getElementById('favoriteCheck');
+let editingEntryId = null;
 
 // Build 20 half-star hit zones (0.5 through 10 in 0.5 steps) once.
 for (let i = 1; i <= 20; i++) {
@@ -101,19 +113,34 @@ starPicker.addEventListener('mouseleave', () => setStarDisplay(currentRating));
 // (ported as-is from the original inline <script>, plus a
 // reset step so a new card doesn't inherit the last pick)
 // =========================================================
-function openModal({ title = 'Untitled', year = '', cover = '', id = '', genres = [] } = {}) {
+function openModal({ title = 'Untitled', year = '', cover = '', id = '', genres = [] } = {}, existing = null) {
   currentGame = { title, year, cover, id, genres };
+  editingEntryId = existing?.id || null;
+
   modalTitle.textContent = title;
+  document.querySelector('.modal-kicker').textContent = existing ? 'Editing entry' : 'Logging';
   if (modalYear) modalYear.textContent = year;
   if (modalCover) modalCover.style.background = cover || COVER_FALLBACKS[0];
 
   resetStarPicker();
-  reviewText.value = '';
-  playedBeforeCheck.checked = false;
-  completedCheck.checked = true;
+  reviewText.value = existing?.review || '';
+  playedBeforeCheck.checked = Boolean(existing?.playedBefore);
+  favoriteCheck.checked = Boolean(existing?.favorite);
+
+  const legacyStatus = existing?.status || (existing?.completed ? 'completed' : 'backlog');
+  statusSelect.value = ['backlog', 'playing', 'completed', 'dropped'].includes(legacyStatus)
+    ? legacyStatus
+    : 'backlog';
+
+  modalSaveBtn.textContent = existing ? 'Save changes' : 'Save entry';
+
+  if (existing && Number(existing.rating) > 0) {
+    commitRating(Number(existing.rating));
+  }
 
   overlay.classList.add('is-open');
   overlay.setAttribute('aria-hidden', 'false');
+
   const modalEl = overlay.querySelector('.modal');
   fx(overlay, [{ opacity: 0 }, { opacity: 1 }], { duration: 160 });
   fx(modalEl, [
@@ -131,9 +158,11 @@ async function closeModal() {
       { opacity: 0, transform: 'translateY(8px)' },
     ], { duration: 140 }),
   ];
+
   await Promise.all(anims.map(a => a.finished));
   overlay.classList.remove('is-open');
   overlay.setAttribute('aria-hidden', 'true');
+  editingEntryId = null;
 }
 
 function resetStarPicker() {
@@ -145,10 +174,25 @@ function resetStarPicker() {
 
 function getEntries() {
   try {
-    return JSON.parse(localStorage.getItem('gameDiaryEntries')) || [];
+    const raw = JSON.parse(localStorage.getItem('gameDiaryEntries')) || [];
+    return Array.isArray(raw) ? raw.map(normalizeEntry) : [];
   } catch {
     return [];
   }
+}
+
+function normalizeEntry(entry) {
+  return {
+    ...entry,
+    id: entry.id || (entry.game || 'game') + '-' + (entry.year || ''),
+    genres: Array.isArray(entry.genres) ? entry.genres : [],
+    rating: Number(entry.rating) || 0,
+    review: entry.review || '',
+    status: entry.status || (entry.completed ? 'completed' : 'backlog'),
+    favorite: Boolean(entry.favorite),
+    playedBefore: Boolean(entry.playedBefore),
+    loggedAt: entry.loggedAt || new Date(0).toISOString(),
+  };
 }
 
 function persistEntries(entries) {
@@ -156,37 +200,84 @@ function persistEntries(entries) {
 }
 
 function saveEntry() {
+  const entries = getEntries();
+  const previous = editingEntryId
+    ? entries.find(entry => entry.id === editingEntryId)
+    : entries.find(entry => entry.id === currentGame.id);
+
   const entry = {
     id: currentGame.id,
     game: currentGame.title,
     year: currentGame.year,
     cover: currentGame.cover,
-    genres: currentGame.genres || [],
+    genres: currentGame.genres?.length ? currentGame.genres : (previous?.genres || []),
     rating: currentRating,
     review: reviewText.value.trim(),
     playedBefore: playedBeforeCheck.checked,
-    completed: completedCheck.checked,
-    loggedAt: new Date().toISOString(),
+    status: statusSelect.value,
+    completed: statusSelect.value === 'completed',
+    favorite: favoriteCheck.checked,
+    loggedAt: previous?.loggedAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   };
 
-  // One entry per game — logging the same game again overwrites its entry.
-  const entries = getEntries();
-  const idx = entries.findIndex(e => e.id === entry.id);
-  if (idx > -1) entries[idx] = entry; else entries.push(entry);
-  persistEntries(entries);
+  const idx = editingEntryId
+    ? entries.findIndex(e => e.id === editingEntryId)
+    : entries.findIndex(e => e.id === entry.id);
 
+  if (idx > -1) entries[idx] = entry;
+  else entries.push(entry);
+
+  persistEntries(entries);
   updateHomeStats();
   if (!diaryMain.hidden) renderDiary();
 
-  // Quick visual confirmation on the button itself.
   const original = modalSaveBtn.textContent;
   modalSaveBtn.textContent = 'Saved ✓';
   modalSaveBtn.disabled = true;
+
   setTimeout(() => {
     modalSaveBtn.textContent = original;
     modalSaveBtn.disabled = false;
     closeModal();
-  }, 500);
+  }, 450);
+}
+
+function editEntry(id) {
+  const entry = getEntries().find(item => item.id === id);
+  if (!entry) return;
+
+  openModal({
+    title: entry.game,
+    year: entry.year,
+    cover: entry.cover,
+    id: entry.id,
+    genres: entry.genres,
+  }, entry);
+}
+
+function deleteEntry(id) {
+  const entries = getEntries();
+  const entry = entries.find(item => item.id === id);
+  if (!entry) return;
+
+  if (!confirm('Delete “' + entry.game + '” from your diary?')) return;
+
+  persistEntries(entries.filter(item => item.id !== id));
+  updateHomeStats();
+  renderDiary();
+}
+
+function toggleFavorite(id) {
+  const entries = getEntries();
+  const entry = entries.find(item => item.id === id);
+  if (!entry) return;
+
+  entry.favorite = !entry.favorite;
+  entry.updatedAt = new Date().toISOString();
+  persistEntries(entries);
+  updateHomeStats();
+  renderDiary();
 }
 
 modalSaveBtn.addEventListener('click', saveEntry);
@@ -236,8 +327,9 @@ function buildCard(game, index) {
     <div class="card-cover" style="${coverStyle}">
       ${game.background_image ? '' : `<span class="cover-glyph">${glyph}</span>`}
       <span class="rating-badge">${badge}</span>
-      <div class="card-hover">
+      <div class="card-hover card-hover-actions">
         <button class="btn btn-log" data-open-modal>+ Log</button>
+        <button class="btn btn-wishlist" data-wishlist>+ Wishlist</button>
       </div>
     </div>
     <div class="card-body">
@@ -251,6 +343,7 @@ function buildCard(game, index) {
 
   // Stash the data the modal needs on the button itself.
   const logBtn = card.querySelector('[data-open-modal]');
+  const wishlistBtn = card.querySelector('[data-wishlist]');
   logBtn.dataset.id = game.id;
   logBtn.dataset.game = title;
   logBtn.dataset.year = year;
@@ -260,6 +353,15 @@ function buildCard(game, index) {
   logBtn.dataset.genres = JSON.stringify(
     Array.isArray(game.genres) ? game.genres.map(g => g.name).filter(Boolean) : []
   );
+
+  wishlistBtn.dataset.id = game.id;
+  wishlistBtn.dataset.game = title;
+  wishlistBtn.dataset.year = year;
+  wishlistBtn.dataset.cover = game.background_image
+    ? "url('" + game.background_image + "')"
+    : COVER_FALLBACKS[index % COVER_FALLBACKS.length];
+  wishlistBtn.dataset.genres = logBtn.dataset.genres;
+  syncWishlistButton(wishlistBtn);
 
   // Hover lift + log-overlay fade (replaces the old CSS :hover transitions).
   const overlayEl = card.querySelector('.card-hover');
@@ -292,14 +394,25 @@ function renderGames(gameList) {
 // Dynamically wire every rendered card's "+ Log" button to the modal.
 function attachLogButtonListeners() {
   gameGrid.querySelectorAll('[data-open-modal]').forEach(btn => {
+    btn.addEventListener('click', () => openModal({
+      title: btn.dataset.game,
+      year: btn.dataset.year,
+      cover: btn.dataset.cover,
+      id: btn.dataset.id,
+      genres: JSON.parse(btn.dataset.genres || '[]'),
+    }));
+  });
+
+  gameGrid.querySelectorAll('[data-wishlist]').forEach(btn => {
     btn.addEventListener('click', () => {
-      openModal({
-        title: btn.dataset.game,
+      toggleWishlist({
+        id: btn.dataset.id,
+        game: btn.dataset.game,
         year: btn.dataset.year,
         cover: btn.dataset.cover,
-        id: btn.dataset.id,
         genres: JSON.parse(btn.dataset.genres || '[]'),
       });
+      syncWishlistButton(btn);
     });
   });
 }
@@ -381,45 +494,108 @@ function buildTopRatedCard(entry) {
 // =========================================================
 // My Diary — reads logged entries back out of localStorage
 // =========================================================
+function getWishlist() {
+  try {
+    const raw = JSON.parse(localStorage.getItem('gameDiaryWishlist')) || [];
+    return Array.isArray(raw) ? raw : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistWishlist(items) {
+  localStorage.setItem('gameDiaryWishlist', JSON.stringify(items));
+}
+
+function toggleWishlist(game) {
+  const items = getWishlist();
+  const exists = items.some(item => item.id === game.id);
+  persistWishlist(exists ? items.filter(item => item.id !== game.id) : [...items, game]);
+  renderWishlist();
+}
+
+function syncWishlistButton(button) {
+  if (!button) return;
+  const exists = getWishlist().some(item => item.id === button.dataset.id);
+  button.textContent = exists ? '✓ Wishlisted' : '+ Wishlist';
+  button.classList.toggle('is-wishlisted', exists);
+}
+
+function removeFromWishlist(id) {
+  persistWishlist(getWishlist().filter(item => item.id !== id));
+  renderWishlist();
+  document.querySelectorAll('[data-wishlist]').forEach(btn => syncWishlistButton(btn));
+}
+
 function buildDiaryCard(entry) {
-  const rating   = Number(entry.rating) || 0;
-  const pct      = `${rating * 10}%`;
-  const badge    = rating ? rating.toFixed(1) : 'N/A';
-  const cover    = entry.cover || COVER_FALLBACKS[0];
-  const isImage  = cover.startsWith('url(');
-  const glyph    = entry.game.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
-  const loggedOn = entry.loggedAt ? new Date(entry.loggedAt).toLocaleDateString() : '';
+  const rating = Number(entry.rating) || 0;
+  const pct = (rating * 10) + '%';
+  const badge = rating ? rating.toFixed(1) : 'N/A';
+  const cover = entry.cover || COVER_FALLBACKS[0];
+  const isImage = cover.startsWith('url(');
+  const glyph = (entry.game || 'Game').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+  const status = entry.status || (entry.completed ? 'completed' : 'backlog');
+  const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
+  const review = entry.review || 'No review yet.';
 
   const card = document.createElement('article');
-  card.className = 'game-card';
+  card.className = 'game-card diary-card';
   card.innerHTML = `
     <div class="card-cover" style="background:${cover};background-size:cover;background-position:center;">
-      ${isImage ? '' : `<span class="cover-glyph">${glyph}</span>`}
+      ${isImage ? '' : '<span class="cover-glyph">' + glyph + '</span>'}
       <span class="rating-badge">${badge}</span>
+      <span class="diary-status status-${status}">${statusLabel}</span>
+      ${entry.favorite ? '<span class="favorite-badge">♥</span>' : ''}
     </div>
     <div class="card-body">
       <h3 class="game-title" title="${entry.game}">${entry.game}</h3>
-      <p class="game-year">${entry.year} · logged ${loggedOn}</p>
+      <p class="game-year">${entry.year} · ${statusLabel}</p>
       <div class="star-rating" role="img" aria-label="${badge} out of 10">
         <span class="stars-fill" style="--pct:${pct}"></span>
       </div>
+      <p class="diary-review" title="${review}">${review}</p>
+      <div class="diary-actions">
+        <button class="diary-action" data-action="edit" type="button">Edit</button>
+        <button class="diary-action" data-action="favorite" type="button" aria-label="${entry.favorite ? 'Remove from favorites' : 'Add to favorites'}">${entry.favorite ? '♥' : '♡'}</button>
+        <button class="diary-action diary-action-danger" data-action="delete" type="button">Delete</button>
+      </div>
     </div>
   `;
+
+  card.querySelector('[data-action="edit"]').addEventListener('click', () => editEntry(entry.id));
+  card.querySelector('[data-action="favorite"]').addEventListener('click', () => toggleFavorite(entry.id));
+  card.querySelector('[data-action="delete"]').addEventListener('click', () => deleteEntry(entry.id));
+
   return card;
 }
 
 function renderDiary() {
   const entries = getEntries();
   diaryGrid.innerHTML = '';
+  populateGenreFilter(entries);
+  updateDiarySummary(entries);
 
   if (!entries.length) {
-    diaryGrid.innerHTML = `<p class="empty-state">Nothing logged yet — hit “+ Log” on a game from Home.</p>`;
+    diaryGrid.innerHTML = '<p class="empty-state">Nothing logged yet — search for a game and hit “+ Log”.</p>';
     return;
   }
 
-  const sort = diarySort?.value || 'recent';
+  const query = (diarySearch?.value || '').trim().toLowerCase();
+  const status = diaryStatus?.value || 'all';
+  const genre = diaryGenre?.value || 'all';
+  const favoritesOnly = diaryFavoritesOnly?.getAttribute('aria-pressed') === 'true';
 
-  const sorted = entries.slice().sort((a, b) => {
+  const filtered = entries.filter(entry => {
+    const haystack = ((entry.game || '') + ' ' + (entry.review || '')).toLowerCase();
+    const matchesSearch = !query || haystack.includes(query);
+    const matchesStatus = status === 'all' || (entry.status || 'backlog') === status;
+    const matchesGenre = genre === 'all' || (entry.genres || []).includes(genre);
+    const matchesFavorite = !favoritesOnly || entry.favorite;
+    return matchesSearch && matchesStatus && matchesGenre && matchesFavorite;
+  });
+
+  const sort = diarySort?.value || 'recent';
+  filtered.sort((a, b) => {
     switch (sort) {
       case 'oldest':
         return new Date(a.loggedAt) - new Date(b.loggedAt);
@@ -431,18 +607,146 @@ function renderDiary() {
         return (a.game || '').localeCompare(b.game || '');
       case 'name-z-a':
         return (b.game || '').localeCompare(a.game || '');
-      case 'recent':
       default:
         return new Date(b.loggedAt) - new Date(a.loggedAt);
     }
   });
 
+  if (!filtered.length) {
+    diaryGrid.innerHTML = '<p class="empty-state">No diary entries match these filters.</p>';
+    return;
+  }
+
   const fragment = document.createDocumentFragment();
-  sorted.forEach(entry => fragment.appendChild(buildDiaryCard(entry)));
+  filtered.forEach(entry => fragment.appendChild(buildDiaryCard(entry)));
   diaryGrid.appendChild(fragment);
 }
 
+function populateGenreFilter(entries) {
+  if (!diaryGenre) return;
+
+  const current = diaryGenre.value || 'all';
+  const genres = [...new Set(entries.flatMap(entry => entry.genres || []))]
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+
+  diaryGenre.innerHTML = '<option value="all">All genres</option>';
+
+  genres.forEach(genre => {
+    const option = document.createElement('option');
+    option.value = genre;
+    option.textContent = genre;
+    diaryGenre.appendChild(option);
+  });
+
+  diaryGenre.value = genres.includes(current) ? current : 'all';
+}
+
+function updateDiarySummary(entries) {
+  if (!diarySummary) return;
+
+  const counts = {
+    all: entries.length,
+    completed: entries.filter(e => e.status === 'completed').length,
+    playing: entries.filter(e => e.status === 'playing').length,
+    backlog: entries.filter(e => e.status === 'backlog').length,
+    dropped: entries.filter(e => e.status === 'dropped').length,
+    favorites: entries.filter(e => e.favorite).length,
+  };
+
+  diarySummary.innerHTML =
+    '<span>' + counts.all + ' total</span>' +
+    '<span>' + counts.completed + ' completed</span>' +
+    '<span>' + counts.playing + ' playing</span>' +
+    '<span>' + counts.backlog + ' backlog</span>' +
+    '<span>' + counts.dropped + ' dropped</span>' +
+    '<span>' + counts.favorites + ' favorites</span>';
+}
+
+function buildWishlistCard(item) {
+  const cover = item.cover || COVER_FALLBACKS[0];
+  const isImage = cover.startsWith('url(');
+  const glyph = (item.game || 'Game').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+
+  const card = document.createElement('article');
+  card.className = 'game-card diary-card';
+  card.innerHTML = `
+    <div class="card-cover" style="background:${cover};background-size:cover;background-position:center;">
+      ${isImage ? '' : '<span class="cover-glyph">' + glyph + '</span>'}
+      <span class="wishlist-badge">WISHLIST</span>
+    </div>
+    <div class="card-body">
+      <h3 class="game-title" title="${item.game}">${item.game}</h3>
+      <p class="game-year">${item.year}</p>
+      <div class="diary-actions">
+        <button class="diary-action wishlist-log" type="button">+ Log</button>
+        <button class="diary-action diary-action-danger wishlist-remove" type="button">Remove</button>
+      </div>
+    </div>
+  `;
+
+  card.querySelector('.wishlist-log').addEventListener('click', () => {
+    openModal(item);
+  });
+
+  card.querySelector('.wishlist-remove').addEventListener('click', () => {
+    removeFromWishlist(item.id);
+  });
+
+  return card;
+}
+
+function renderWishlist() {
+  if (!wishlistGrid) return;
+
+  const items = getWishlist();
+  wishlistGrid.innerHTML = '';
+
+  if (wishlistCount) {
+    wishlistCount.textContent = items.length + ' ' + (items.length === 1 ? 'game' : 'games');
+  }
+
+  if (!items.length) {
+    wishlistGrid.innerHTML = '<p class="empty-state">Your wishlist is empty — add games from Home.</p>';
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  items.forEach(item => fragment.appendChild(buildWishlistCard(item)));
+  wishlistGrid.appendChild(fragment);
+}
+
+function showView(view) {
+  const isDiary = view === 'diary';
+  const isWishlist = view === 'wishlist';
+
+  homeHero.hidden = isDiary || isWishlist;
+  homeMain.hidden = isDiary || isWishlist;
+  diaryMain.hidden = !isDiary;
+  wishlistMain.hidden = !isWishlist;
+
+  navHome.classList.toggle('is-active', !isDiary && !isWishlist);
+  navDiary.classList.toggle('is-active', isDiary);
+  navWishlist.classList.toggle('is-active', isWishlist);
+
+  if (isDiary) renderDiary();
+  if (isWishlist) renderWishlist();
+}
+
 diarySort?.addEventListener('change', renderDiary);
+diarySearch?.addEventListener('input', renderDiary);
+diaryStatus?.addEventListener('change', renderDiary);
+diaryGenre?.addEventListener('change', renderDiary);
+diaryFavoritesOnly?.addEventListener('click', () => {
+  const active = diaryFavoritesOnly.getAttribute('aria-pressed') === 'true';
+  diaryFavoritesOnly.setAttribute('aria-pressed', String(!active));
+  diaryFavoritesOnly.classList.toggle('is-active', !active);
+  renderDiary();
+});
+
+navHome.addEventListener('click', (e) => { e.preventDefault(); showView('home'); });
+navDiary.addEventListener('click', (e) => { e.preventDefault(); showView('diary'); });
+navWishlist.addEventListener('click', (e) => { e.preventDefault(); showView('wishlist'); });
 
 // ---- Home / My Diary view switching -------------------------------------
 function showView(view) {
@@ -637,5 +941,6 @@ document.addEventListener('click', (e) => {
 // ---- Init ----------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => {
   updateHomeStats();
+  renderWishlist();
   fetchGames(); // falls back to FALLBACK_GAMES automatically if offline / no key
 });

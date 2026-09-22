@@ -25,8 +25,8 @@
       </div>
 
       <nav class="header-nav">
-        <a href="#" class="nav-link is-active">Home</a>
-        <a href="#" class="nav-link">My Diary</a>
+        <a href="#" id="navHome" class="nav-link is-active">Home</a>
+        <a href="#" id="navDiary" class="nav-link">My Diary</a>
         <a href="#" class="nav-link">Wishlist</a>
         <div class="avatar" role="img" aria-label="User avatar">B</div>
       </nav>
@@ -38,7 +38,7 @@
   </header>
 
   <!-- ============ HERO / SEARCH HEADER ============ -->
-  <section class="hero">
+  <section class="hero" id="homeHero">
     <div class="hero-inner">
       <p class="hero-kicker">Track every game you play</p>
       <h1 class="hero-title">What did you finish&nbsp;tonight?</h1>
@@ -62,7 +62,7 @@
   </section>
 
   <!-- ============ MAIN CONTENT / GAME GRID ============ -->
-  <main class="main">
+  <main class="main" id="homeMain">
     <div class="section-heading">
       <h2>Your diary recap</h2>
       <a href="#" class="see-all">See all →</a>
@@ -180,6 +180,13 @@
 
     </div>
   </main>
+
+  <section class="main" id="diaryMain" hidden>
+    <div class="section-heading">
+      <h2>My Diary</h2>
+    </div>
+    <div class="game-grid" id="diaryGrid"></div>
+  </section>
 
   <footer class="site-footer">
     <p>Game Diary — a place to remember what you played.</p>

@@ -20,12 +20,12 @@ const COVER_FALLBACKS = [
 // Offline / error fallback sample data, shaped like RAWG results
 // so renderGames() doesn't need to branch on data source.
 const FALLBACK_GAMES = [
-  { name: 'Elden Ring',       background_image: null, genres: [{ name: 'Action RPG' }],   rating: 4.8,  released: '2022-02-25' },
-  { name: 'Hollow Knight',    background_image: null, genres: [{ name: 'Metroidvania' }], rating: 4.5,  released: '2017-02-24' },
-  { name: 'Hades',            background_image: null, genres: [{ name: 'Roguelike' }],    rating: 4.65, released: '2020-09-17' },
-  { name: "Baldur's Gate 3",  background_image: null, genres: [{ name: 'RPG' }],          rating: 4.85, released: '2023-08-03' },
-  { name: 'Stardew Valley',   background_image: null, genres: [{ name: 'Simulation' }],   rating: 4.55, released: '2016-02-26' },
-  { name: 'Celeste',          background_image: null, genres: [{ name: 'Platformer' }],   rating: 4.6,  released: '2018-01-25' },
+  { id: 'elden-ring',      name: 'Elden Ring',       background_image: null, genres: [{ name: 'Action RPG' }],   rating: 4.8,  released: '2022-02-25' },
+  { id: 'hollow-knight',   name: 'Hollow Knight',    background_image: null, genres: [{ name: 'Metroidvania' }], rating: 4.5,  released: '2017-02-24' },
+  { id: 'hades',           name: 'Hades',            background_image: null, genres: [{ name: 'Roguelike' }],    rating: 4.65, released: '2020-09-17' },
+  { id: 'baldurs-gate-3',  name: "Baldur's Gate 3",  background_image: null, genres: [{ name: 'RPG' }],          rating: 4.85, released: '2023-08-03' },
+  { id: 'stardew-valley',  name: 'Stardew Valley',   background_image: null, genres: [{ name: 'Simulation' }],   rating: 4.55, released: '2016-02-26' },
+  { id: 'celeste',         name: 'Celeste',          background_image: null, genres: [{ name: 'Platformer' }],   rating: 4.6,  released: '2018-01-25' },
 ];
 
 // ---- Animation helper --------------------------------------------------
@@ -50,12 +50,19 @@ const reviewText     = document.getElementById('reviewText');
 const playedBeforeCheck = document.getElementById('playedBeforeCheck');
 const completedCheck = document.getElementById('completedCheck');
 const modalSaveBtn   = document.getElementById('modalSave');
-let currentGame = { title: '', year: '' };
+let currentGame = { title: '', year: '', cover: '', id: '' };
 const starPicker  = document.getElementById('starPicker');
 const starFill    = document.getElementById('starFill');
 const starHitlayer = document.getElementById('starHitlayer');
 const starValue   = document.getElementById('starValue');
 let currentRating = 0;
+
+const homeHero  = document.getElementById('homeHero');
+const homeMain  = document.getElementById('homeMain');
+const diaryMain = document.getElementById('diaryMain');
+const diaryGrid = document.getElementById('diaryGrid');
+const navHome   = document.getElementById('navHome');
+const navDiary  = document.getElementById('navDiary');
 
 // Build 20 half-star hit zones (0.5 through 10 in 0.5 steps) once.
 for (let i = 1; i <= 20; i++) {
@@ -93,8 +100,8 @@ starPicker.addEventListener('mouseleave', () => setStarDisplay(currentRating));
 // (ported as-is from the original inline <script>, plus a
 // reset step so a new card doesn't inherit the last pick)
 // =========================================================
-function openModal({ title = 'Untitled', year = '', cover = '' } = {}) {
-  currentGame = { title, year };
+function openModal({ title = 'Untitled', year = '', cover = '', id = '' } = {}) {
+  currentGame = { title, year, cover, id };
   modalTitle.textContent = title;
   if (modalYear) modalYear.textContent = year;
   if (modalCover) modalCover.style.background = cover || COVER_FALLBACKS[0];
@@ -135,19 +142,38 @@ function resetStarPicker() {
   starHitlayer.setAttribute('aria-valuenow', 0);
 }
 
+function getEntries() {
+  try {
+    return JSON.parse(localStorage.getItem('gameDiaryEntries')) || [];
+  } catch {
+    return [];
+  }
+}
+
+function persistEntries(entries) {
+  localStorage.setItem('gameDiaryEntries', JSON.stringify(entries));
+}
+
 function saveEntry() {
   const entry = {
+    id: currentGame.id,
     game: currentGame.title,
     year: currentGame.year,
+    cover: currentGame.cover,
     rating: currentRating,
     review: reviewText.value.trim(),
     playedBefore: playedBeforeCheck.checked,
     completed: completedCheck.checked,
+    loggedAt: new Date().toISOString(),
   };
 
-  // Static for now — no persistence yet. Swap this for a real
-  // save (localStorage / API) once the diary data model is settled.
-  console.log('Entry logged:', entry);
+  // One entry per game — logging the same game again overwrites its entry.
+  const entries = getEntries();
+  const idx = entries.findIndex(e => e.id === entry.id);
+  if (idx > -1) entries[idx] = entry; else entries.push(entry);
+  persistEntries(entries);
+
+  if (!diaryMain.hidden) renderDiary();
 
   // Quick visual confirmation on the button itself.
   const original = modalSaveBtn.textContent;
@@ -222,6 +248,7 @@ function buildCard(game, index) {
 
   // Stash the data the modal needs on the button itself.
   const logBtn = card.querySelector('[data-open-modal]');
+  logBtn.dataset.id = game.id;
   logBtn.dataset.game = title;
   logBtn.dataset.year = year;
   logBtn.dataset.cover = game.background_image
@@ -264,10 +291,69 @@ function attachLogButtonListeners() {
         title: btn.dataset.game,
         year: btn.dataset.year,
         cover: btn.dataset.cover,
+        id: btn.dataset.id,
       });
     });
   });
 }
+
+// =========================================================
+// My Diary — reads logged entries back out of localStorage
+// =========================================================
+function buildDiaryCard(entry) {
+  const rating   = Number(entry.rating) || 0;
+  const pct      = `${rating * 10}%`;
+  const badge    = rating ? rating.toFixed(1) : 'N/A';
+  const cover    = entry.cover || COVER_FALLBACKS[0];
+  const isImage  = cover.startsWith('url(');
+  const glyph    = entry.game.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+  const loggedOn = entry.loggedAt ? new Date(entry.loggedAt).toLocaleDateString() : '';
+
+  const card = document.createElement('article');
+  card.className = 'game-card';
+  card.innerHTML = `
+    <div class="card-cover" style="background:${cover};background-size:cover;background-position:center;">
+      ${isImage ? '' : `<span class="cover-glyph">${glyph}</span>`}
+      <span class="rating-badge">${badge}</span>
+    </div>
+    <div class="card-body">
+      <h3 class="game-title" title="${entry.game}">${entry.game}</h3>
+      <p class="game-year">${entry.year} · logged ${loggedOn}</p>
+      <div class="star-rating" role="img" aria-label="${badge} out of 10">
+        <span class="stars-fill" style="--pct:${pct}"></span>
+      </div>
+    </div>
+  `;
+  return card;
+}
+
+function renderDiary() {
+  const entries = getEntries();
+  diaryGrid.innerHTML = '';
+
+  if (!entries.length) {
+    diaryGrid.innerHTML = `<p class="empty-state">Nothing logged yet — hit “+ Log” on a game from Home.</p>`;
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  entries.slice().reverse().forEach(entry => fragment.appendChild(buildDiaryCard(entry)));
+  diaryGrid.appendChild(fragment);
+}
+
+// ---- Home / My Diary view switching -------------------------------------
+function showView(view) {
+  const isDiary = view === 'diary';
+  homeHero.hidden = isDiary;
+  homeMain.hidden = isDiary;
+  diaryMain.hidden = !isDiary;
+  navHome.classList.toggle('is-active', !isDiary);
+  navDiary.classList.toggle('is-active', isDiary);
+  if (isDiary) renderDiary();
+}
+
+navHome.addEventListener('click', (e) => { e.preventDefault(); showView('home'); });
+navDiary.addEventListener('click', (e) => { e.preventDefault(); showView('diary'); });
 
 // =========================================================
 // RAWG fetch

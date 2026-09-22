@@ -83,6 +83,7 @@ input,textarea{font-family:inherit}
 
 /* Game grid + cards — hover lift/overlay fade handled in JS */
 .game-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:20px}
+.empty-state{grid-column:1/-1;text-align:center;color:var(--text-faint);padding:60px 20px;font-size:14px}
 .game-card{background:var(--bg-surface);border:1px solid var(--border-soft);border-radius:var(--radius-lg);
   overflow:hidden}
 .card-cover{position:relative;aspect-ratio:3/4;background:var(--cover,#232329);

@@ -50,7 +50,7 @@ const reviewText     = document.getElementById('reviewText');
 const playedBeforeCheck = document.getElementById('playedBeforeCheck');
 const completedCheck = document.getElementById('completedCheck');
 const modalSaveBtn   = document.getElementById('modalSave');
-let currentGame = { title: '', year: '', cover: '', id: '' };
+let currentGame = { title: '', year: '', cover: '', id: '', genres: [] };
 const starPicker  = document.getElementById('starPicker');
 const starFill    = document.getElementById('starFill');
 const starHitlayer = document.getElementById('starHitlayer');
@@ -100,8 +100,8 @@ starPicker.addEventListener('mouseleave', () => setStarDisplay(currentRating));
 // (ported as-is from the original inline <script>, plus a
 // reset step so a new card doesn't inherit the last pick)
 // =========================================================
-function openModal({ title = 'Untitled', year = '', cover = '', id = '' } = {}) {
-  currentGame = { title, year, cover, id };
+function openModal({ title = 'Untitled', year = '', cover = '', id = '', genres = [] } = {}) {
+  currentGame = { title, year, cover, id, genres };
   modalTitle.textContent = title;
   if (modalYear) modalYear.textContent = year;
   if (modalCover) modalCover.style.background = cover || COVER_FALLBACKS[0];
@@ -160,6 +160,7 @@ function saveEntry() {
     game: currentGame.title,
     year: currentGame.year,
     cover: currentGame.cover,
+    genres: currentGame.genres || [],
     rating: currentRating,
     review: reviewText.value.trim(),
     playedBefore: playedBeforeCheck.checked,
@@ -173,6 +174,7 @@ function saveEntry() {
   if (idx > -1) entries[idx] = entry; else entries.push(entry);
   persistEntries(entries);
 
+  updateHomeStats();
   if (!diaryMain.hidden) renderDiary();
 
   // Quick visual confirmation on the button itself.
@@ -254,6 +256,9 @@ function buildCard(game, index) {
   logBtn.dataset.cover = game.background_image
     ? `url('${game.background_image}')`
     : COVER_FALLBACKS[index % COVER_FALLBACKS.length];
+  logBtn.dataset.genres = JSON.stringify(
+    Array.isArray(game.genres) ? game.genres.map(g => g.name).filter(Boolean) : []
+  );
 
   // Hover lift + log-overlay fade (replaces the old CSS :hover transitions).
   const overlayEl = card.querySelector('.card-hover');
@@ -292,9 +297,84 @@ function attachLogButtonListeners() {
         year: btn.dataset.year,
         cover: btn.dataset.cover,
         id: btn.dataset.id,
+        genres: JSON.parse(btn.dataset.genres || '[]'),
       });
     });
   });
+}
+
+// =========================================================
+// Home stats — calculated from the user's diary
+// =========================================================
+function updateHomeStats() {
+  const entries = getEntries();
+
+  const countEl = document.getElementById('statGamesLogged');
+  const avgEl = document.getElementById('statAverageRating');
+  const genreEl = document.getElementById('statTopGenre');
+  const shelfEl = document.getElementById('topRatedShelf');
+  const emptyEl = document.getElementById('statsEmpty');
+
+  const count = entries.length;
+  if (countEl) countEl.textContent = count;
+  if (avgEl) {
+    const rated = entries.filter(e => Number(e.rating) > 0);
+    const average = rated.length
+      ? rated.reduce((sum, e) => sum + Number(e.rating), 0) / rated.length
+      : null;
+    avgEl.textContent = average === null ? 'N/A' : average.toFixed(1);
+  }
+
+  const genreCounts = {};
+  entries.forEach(entry => {
+    (Array.isArray(entry.genres) ? entry.genres : []).forEach(genre => {
+      if (!genre) return;
+      genreCounts[genre] = (genreCounts[genre] || 0) + 1;
+    });
+  });
+
+  const topGenre = Object.entries(genreCounts)
+    .sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A';
+  if (genreEl) genreEl.textContent = topGenre;
+
+  if (shelfEl) {
+    shelfEl.innerHTML = '';
+    const topRated = entries
+      .filter(e => Number(e.rating) > 0)
+      .sort((a, b) => Number(b.rating) - Number(a.rating))
+      .slice(0, 5);
+
+    if (!topRated.length) {
+      shelfEl.innerHTML = '<p class="empty-state">Log and rate some games to build your favorites.</p>';
+    } else {
+      const fragment = document.createDocumentFragment();
+      topRated.forEach(entry => fragment.appendChild(buildTopRatedCard(entry)));
+      shelfEl.appendChild(fragment);
+    }
+  }
+
+  if (emptyEl) emptyEl.hidden = count > 0;
+}
+
+function buildTopRatedCard(entry) {
+  const rating = Number(entry.rating) || 0;
+  const cover = entry.cover || COVER_FALLBACKS[0];
+  const isImage = cover.startsWith('url(');
+  const glyph = (entry.game || 'Game').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+
+  const card = document.createElement('article');
+  card.className = 'top-rated-card';
+  card.innerHTML = `
+    <div class="top-rated-cover" style="background:${cover};background-size:cover;background-position:center;">
+      ${isImage ? '' : `<span class="cover-glyph">${glyph}</span>`}
+      <span class="rating-badge">${rating.toFixed(1)}</span>
+    </div>
+    <div class="top-rated-body">
+      <h3 class="game-title" title="${entry.game}">${entry.game}</h3>
+      <span class="top-rated-score">${rating.toFixed(1)} / 10</span>
+    </div>
+  `;
+  return card;
 }
 
 // =========================================================
@@ -401,5 +481,6 @@ document.addEventListener('click', (e) => {
 
 // ---- Init ----------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => {
+  updateHomeStats();
   fetchGames(); // falls back to FALLBACK_GAMES automatically if offline / no key
 });

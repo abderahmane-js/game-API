@@ -162,3 +162,16 @@ input,textarea{font-family:inherit}
   .game-grid{grid-template-columns:repeat(2,1fr);gap:10px}
   .card-body{padding:10px 10px 12px}
 }
+
+/* Personal diary stats + top-rated shelf */
+.stats-empty{margin:18px 0 0;text-align:center;color:var(--text-faint);font-size:12.5px}
+.top-rated-section{margin-top:52px}
+.top-rated-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:20px}
+.top-rated-card{background:var(--bg-surface);border:1px solid var(--border-soft);border-radius:var(--radius-lg);overflow:hidden}
+.top-rated-cover{position:relative;aspect-ratio:3/4;background:var(--bg-elevated);display:flex;align-items:center;justify-content:center}
+.top-rated-body{padding:10px 12px 12px}
+.top-rated-score{font-size:12px;color:var(--accent-purple)}
+.top-rated-grid .empty-state{grid-column:1/-1}
+@media (max-width:1080px){.top-rated-grid{grid-template-columns:repeat(4,1fr)}}
+@media (max-width:860px){.top-rated-grid{grid-template-columns:repeat(3,1fr)}}
+@media (max-width:640px){.top-rated-grid{grid-template-columns:repeat(2,1fr);gap:14px}}

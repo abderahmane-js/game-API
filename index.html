@@ -65,7 +65,7 @@
   <!-- ============ MAIN CONTENT / GAME GRID ============ -->
   <main class="main" id="homeMain">
     <div class="section-heading">
-      <h2>Your diary recap</h2>
+      <h2>Suggest games</h2>
       <a href="#" class="see-all">See all →</a>
     </div>
 
@@ -190,10 +190,21 @@
   </main>
 
   <section class="main" id="diaryMain" hidden>
-    <div class="section-heading">
+    <div class="section-heading diary-heading">
       <h2>My Diary</h2>
+      <label class="sort-control">
+        <span>Sort by</span>
+        <select id="diarySort">
+          <option value="recent">Most recent</option>
+          <option value="oldest">Oldest</option>
+          <option value="rating-high">Highest rated</option>
+          <option value="rating-low">Lowest rated</option>
+          <option value="name-a-z">Name A–Z</option>
+          <option value="name-z-a">Name Z–A</option>
+        </select>
+      </label>
     </div>
-    <div class="game-grid" id="diaryGrid"></div>
+    <div class="diary-grid" id="diaryGrid"></div>
   </section>
 
   <footer class="site-footer">

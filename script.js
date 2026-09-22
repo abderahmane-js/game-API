@@ -61,6 +61,7 @@ const homeHero  = document.getElementById('homeHero');
 const homeMain  = document.getElementById('homeMain');
 const diaryMain = document.getElementById('diaryMain');
 const diaryGrid = document.getElementById('diaryGrid');
+const diarySort = document.getElementById('diarySort');
 const navHome   = document.getElementById('navHome');
 const navDiary  = document.getElementById('navDiary');
 
@@ -416,10 +417,32 @@ function renderDiary() {
     return;
   }
 
+  const sort = diarySort?.value || 'recent';
+
+  const sorted = entries.slice().sort((a, b) => {
+    switch (sort) {
+      case 'oldest':
+        return new Date(a.loggedAt) - new Date(b.loggedAt);
+      case 'rating-high':
+        return Number(b.rating || 0) - Number(a.rating || 0);
+      case 'rating-low':
+        return Number(a.rating || 0) - Number(b.rating || 0);
+      case 'name-a-z':
+        return (a.game || '').localeCompare(b.game || '');
+      case 'name-z-a':
+        return (b.game || '').localeCompare(a.game || '');
+      case 'recent':
+      default:
+        return new Date(b.loggedAt) - new Date(a.loggedAt);
+    }
+  });
+
   const fragment = document.createDocumentFragment();
-  entries.slice().reverse().forEach(entry => fragment.appendChild(buildDiaryCard(entry)));
+  sorted.forEach(entry => fragment.appendChild(buildDiaryCard(entry)));
   diaryGrid.appendChild(fragment);
 }
+
+diarySort?.addEventListener('change', renderDiary);
 
 // ---- Home / My Diary view switching -------------------------------------
 function showView(view) {
@@ -440,7 +463,7 @@ navDiary.addEventListener('click', (e) => { e.preventDefault(); showView('diary'
 // =========================================================
 async function fetchGames(query = '') {
   try {
-    const params = new URLSearchParams({ key: API_KEY, page_size: '6' });
+    const params = new URLSearchParams({ key: API_KEY, page_size: '10' });
 
     if (query) {
       params.set('search', query);
@@ -465,11 +488,143 @@ async function fetchGames(query = '') {
   }
 }
 
+
+// =========================================================
+// Search autocomplete / suggestions
+// =========================================================
+let suggestionTimer;
+let suggestionRequest = 0;
+
+function getSuggestionBox(input) {
+  const wrapper = input?.closest('.header-search, .hero-search');
+  if (!wrapper) return null;
+
+  wrapper.classList.add('search-wrapper');
+
+  let box = wrapper.querySelector('.search-suggestions');
+  if (!box) {
+    box = document.createElement('div');
+    box.className = 'search-suggestions';
+    wrapper.appendChild(box);
+  }
+
+  return box;
+}
+
+function hideSuggestions(input) {
+  const box = input?.closest('.search-wrapper')?.querySelector('.search-suggestions');
+  if (!box) return;
+  box.innerHTML = '';
+  box.hidden = true;
+}
+
+function showSuggestions(input, games) {
+  const box = getSuggestionBox(input);
+  if (!box) return;
+
+  box.innerHTML = '';
+
+  games.slice(0, 5).forEach(game => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'search-suggestion';
+
+    const year = game.released
+      ? new Date(game.released).getFullYear()
+      : '';
+
+    item.innerHTML = `
+      <span class="suggestion-cover">
+        ${game.background_image ? `<img src="${game.background_image}" alt="">` : ''}
+      </span>
+      <span class="suggestion-info">
+        <strong>${game.name}</strong>
+        <small>${year || 'Unknown'}</small>
+      </span>
+    `;
+
+    item.addEventListener('mousedown', e => e.preventDefault());
+    item.addEventListener('click', () => {
+      input.value = game.name;
+      hideSuggestions(input);
+      fetchGames(game.name);
+    });
+
+    box.appendChild(item);
+  });
+
+  box.hidden = games.length === 0;
+}
+
+async function fetchSuggestions(input, query) {
+  const requestId = ++suggestionRequest;
+
+  try {
+    const params = new URLSearchParams({
+      key: API_KEY,
+      search: query,
+      page_size: '5'
+    });
+
+    const res = await fetch(`${API_BASE}?${params.toString()}`);
+    if (!res.ok) return;
+
+    const data = await res.json();
+    if (requestId !== suggestionRequest) return;
+
+    showSuggestions(input, data.results || []);
+  } catch {
+    hideSuggestions(input);
+  }
+}
+
+function setupAutocomplete(input) {
+  if (!input) return;
+
+  input.addEventListener('input', () => {
+    const query = input.value.trim();
+    clearTimeout(suggestionTimer);
+
+    if (query.length < 2) {
+      hideSuggestions(input);
+      return;
+    }
+
+    suggestionTimer = setTimeout(() => {
+      fetchSuggestions(input, query);
+    }, 300);
+  });
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Escape') hideSuggestions(input);
+  });
+
+  input.addEventListener('blur', () => {
+    setTimeout(() => hideSuggestions(input), 150);
+  });
+}
+
+const headerSearchInput = document.querySelector('.header-search input');
+const heroSearchInput = document.querySelector('.hero-search input');
+
+setupAutocomplete(headerSearchInput);
+setupAutocomplete(heroSearchInput);
+
 // ---- Wire up the search bars to fetchGames() ----------------------------
-document.querySelector('.hero-search')?.addEventListener('submit', (e) => {
-  e.preventDefault();
-  const query = e.target.querySelector('input').value.trim();
-  fetchGames(query);
+document.querySelectorAll('.hero-search, .header-search').forEach(searchEl => {
+  const formOrWrapper = searchEl.closest('form') || searchEl;
+
+  if (formOrWrapper.dataset.searchWired) return;
+  formOrWrapper.dataset.searchWired = 'true';
+
+  formOrWrapper.addEventListener('submit', e => {
+    e.preventDefault();
+    const input = searchEl.querySelector('input');
+    const query = input?.value.trim() || '';
+
+    hideSuggestions(input);
+    if (query) fetchGames(query);
+  });
 });
 
 // ---- Button press bounce (delegated — covers static + rendered buttons) --

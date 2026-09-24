@@ -799,19 +799,27 @@ navHome.addEventListener('click', (e) => { e.preventDefault(); showView('home');
 navDiary.addEventListener('click', (e) => { e.preventDefault(); showView('diary'); });
 navWishlist.addEventListener('click', (e) => { e.preventDefault(); showView('wishlist'); });
 
-// ---- Home / My Diary view switching -------------------------------------
+// ---- Home / My Diary / Wishlist view switching -------------------------
 function showView(view) {
   const isDiary = view === 'diary';
-  homeHero.hidden = isDiary;
-  homeMain.hidden = isDiary;
+  const isWishlist = view === 'wishlist';
+
+  homeHero.hidden = isDiary || isWishlist;
+  homeMain.hidden = isDiary || isWishlist;
   diaryMain.hidden = !isDiary;
-  navHome.classList.toggle('is-active', !isDiary);
+  wishlistMain.hidden = !isWishlist;
+
+  navHome.classList.toggle('is-active', !isDiary && !isWishlist);
   navDiary.classList.toggle('is-active', isDiary);
+  navWishlist.classList.toggle('is-active', isWishlist);
+
   if (isDiary) renderDiary();
+  if (isWishlist) renderWishlist();
 }
 
 navHome.addEventListener('click', (e) => { e.preventDefault(); showView('home'); });
 navDiary.addEventListener('click', (e) => { e.preventDefault(); showView('diary'); });
+navWishlist.addEventListener('click', (e) => { e.preventDefault(); showView('wishlist'); });
 
 // =========================================================
 // RAWG fetch

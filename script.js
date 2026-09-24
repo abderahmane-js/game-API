@@ -288,6 +288,44 @@ overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
 
 // =========================================================
+// Repair missing genres in older diary entries
+// =========================================================
+async function hydrateMissingGenres() {
+  const entries = getEntries();
+  const missing = entries.filter(entry => !getGenreNames(entry.genres) .length && entry.id);
+  if (!missing.length) return;
+
+  let changed = false;
+  for (const entry of missing) {
+    try {
+      const numericId = /^\\d+$/.test(String(entry.id));
+      const endpoint = numericId ? API_BASE + '/' + encodeURIComponent(entry.id) : API_BASE;
+      const params = new URLSearchParams({ key: API_KEY });
+      if (!numericId) {
+        params.set('search', entry.game || '');
+        params.set('page_size', '1');
+      }
+      const res = await fetch(endpoint + '?' + params.toString());
+      if (!res.ok) continue;
+      const data = await res.json();
+      const genres = numericId
+        ? getGenreNames(data.genres)
+        : getGenreNames(data.results?.[0]?.genres);
+      if (genres.length) {
+        entry.genres = genres;
+        changed = true;
+      }
+    } catch {}
+  }
+
+  if (changed) {
+    persistEntries(entries);
+    updateHomeStats();
+    if (!diaryMain.hidden) renderDiary();
+  }
+}
+
+// =========================================================
 // Rendering
 // =========================================================
 
@@ -952,8 +990,10 @@ document.addEventListener('click', (e) => {
 });
 
 // ---- Init ----------------------------------------------------------------
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   updateHomeStats();
   renderWishlist();
+  await hydrateMissingGenres();
+  updateHomeStats();
   fetchGames(); // falls back to FALLBACK_GAMES automatically if offline / no key
 });

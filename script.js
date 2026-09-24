@@ -185,7 +185,7 @@ function normalizeEntry(entry) {
   return {
     ...entry,
     id: entry.id || (entry.game || 'game') + '-' + (entry.year || ''),
-    genres: Array.isArray(entry.genres) ? entry.genres : [],
+    genres: getGenreNames(entry.genres?.length ? entry.genres : (entry.genre ? [entry.genre] : [])),
     rating: Number(entry.rating) || 0,
     review: entry.review || '',
     status: entry.status || (entry.completed ? 'completed' : 'backlog'),
@@ -210,7 +210,8 @@ function saveEntry() {
     game: currentGame.title,
     year: currentGame.year,
     cover: currentGame.cover,
-    genres: currentGame.genres?.length ? currentGame.genres : (previous?.genres || []),
+    // Keep saved genres when the current API result has none.
+    genres: getGenreNames(currentGame.genres?.length ? currentGame.genres : (previous?.genres || [])),
     rating: currentRating,
     review: reviewText.value.trim(),
     playedBefore: playedBeforeCheck.checked,
@@ -303,8 +304,20 @@ function getYear(releasedDate) {
   return Number.isFinite(year) ? year : 'Unknown';
 }
 
+function getGenreNames(genres) {
+  if (!Array.isArray(genres)) return [];
+
+  return genres
+    .map(genre => {
+      if (typeof genre === 'string') return genre.trim();
+      if (genre && typeof genre === 'object') return String(genre.name || '').trim();
+      return '';
+    })
+    .filter(Boolean);
+}
+
 function getGenre(genres) {
-  return (Array.isArray(genres) && genres.length && genres[0].name) ? genres[0].name : 'Unclassified';
+  return getGenreNames(genres).join(' · ') || 'Unclassified';
 }
 
 function buildCard(game, index) {
@@ -351,7 +364,7 @@ function buildCard(game, index) {
     ? `url('${game.background_image}')`
     : COVER_FALLBACKS[index % COVER_FALLBACKS.length];
   logBtn.dataset.genres = JSON.stringify(
-    Array.isArray(game.genres) ? game.genres.map(g => g.name).filter(Boolean) : []
+    getGenreNames(game.genres)
   );
 
   wishlistBtn.dataset.id = game.id;
@@ -589,7 +602,7 @@ function renderDiary() {
     const haystack = ((entry.game || '') + ' ' + (entry.review || '')).toLowerCase();
     const matchesSearch = !query || haystack.includes(query);
     const matchesStatus = status === 'all' || (entry.status || 'backlog') === status;
-    const matchesGenre = genre === 'all' || (entry.genres || []).includes(genre);
+    const matchesGenre = genre === 'all' || getGenreNames(entry.genres).includes(genre);
     const matchesFavorite = !favoritesOnly || entry.favorite;
     return matchesSearch && matchesStatus && matchesGenre && matchesFavorite;
   });
@@ -626,7 +639,7 @@ function populateGenreFilter(entries) {
   if (!diaryGenre) return;
 
   const current = diaryGenre.value || 'all';
-  const genres = [...new Set(entries.flatMap(entry => entry.genres || []))]
+  const genres = [...new Set(entries.flatMap(entry => getGenreNames(entry.genres)))]
     .filter(Boolean)
     .sort((a, b) => a.localeCompare(b));
 

@@ -354,6 +354,43 @@ function getGenreNames(genres) {
     .filter(Boolean);
 }
 
+// Shared cover handling: supports RAWG URLs and legacy CSS url('...') values.
+function getCoverUrl(cover) {
+  if (typeof cover !== 'string') return '';
+  const value = cover.trim();
+  const match = value.match(/^url\([\"']?(.*?)[\"']?\)$/i);
+  const url = match ? match[1] : value;
+  try {
+    const parsed = new URL(url, window.location.href);
+    return ['https:', 'http:'].includes(parsed.protocol) ? parsed.href : '';
+  } catch { return ''; }
+}
+
+function applyCoverImage(container, cover, glyph = '🎮') {
+  if (!container) return;
+  const url = getCoverUrl(cover);
+  container.style.background = COVER_FALLBACKS[0];
+  container.querySelector('.cover-glyph')?.remove();
+  container.querySelector('.cover-art')?.remove();
+  if (!url) {
+    const fallback = document.createElement('span');
+    fallback.className = 'cover-glyph'; fallback.textContent = glyph;
+    container.prepend(fallback); return;
+  }
+  const image = document.createElement('img');
+  image.className = 'cover-art'; image.alt = ''; image.loading = 'lazy'; image.decoding = 'async';
+  image.src = url;
+  image.addEventListener('error', () => {
+    image.remove();
+    if (!container.querySelector('.cover-glyph')) {
+      const fallback = document.createElement('span');
+      fallback.className = 'cover-glyph'; fallback.textContent = glyph;
+      container.prepend(fallback);
+    }
+  }, { once: true });
+  container.prepend(image);
+}
+
 function getGenre(genres) {
   return getGenreNames(genres).join(' · ') || 'Unclassified';
 }
@@ -366,9 +403,7 @@ function buildCard(game, index) {
   const pct      = rating10 !== null ? `${rating10 * 10}%` : '0%';
   const badge    = rating10 !== null ? rating10.toFixed(1) : 'N/A';
 
-  const coverStyle = game.background_image
-    ? `background-image:url('${game.background_image}'); background-size:cover; background-position:center;`
-    : `background:${COVER_FALLBACKS[index % COVER_FALLBACKS.length]};`;
+  const coverStyle = `background:${COVER_FALLBACKS[index % COVER_FALLBACKS.length]};`;
 
   const glyph = title.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
 
@@ -376,7 +411,7 @@ function buildCard(game, index) {
   card.className = 'game-card';
   card.innerHTML = `
     <div class="card-cover" style="${coverStyle}">
-      ${game.background_image ? '' : `<span class="cover-glyph">${glyph}</span>`}
+      
       <span class="rating-badge">${badge}</span>
       <div class="card-hover card-hover-actions">
         <button class="btn btn-log" data-open-modal>+ Log</button>
@@ -391,6 +426,8 @@ function buildCard(game, index) {
       </div>
     </div>
   `;
+
+  applyCoverImage(card.querySelector('.card-cover'), game.background_image, glyph);
 
   // Stash the data the modal needs on the button itself.
   const logBtn = card.querySelector('[data-open-modal]');
@@ -539,6 +576,7 @@ function buildTopRatedCard(entry) {
       <span class="top-rated-score">${rating.toFixed(1)} / 10</span>
     </div>
   `;
+  applyCoverImage(card.querySelector('.top-rated-cover'), cover, glyph);
   return card;
 }
 
@@ -612,6 +650,8 @@ function buildDiaryCard(entry) {
       </div>
     </div>
   `;
+
+  applyCoverImage(card.querySelector('.card-cover'), cover, glyph);
 
   card.querySelector('[data-action="edit"]').addEventListener('click', () => editEntry(entry.id));
   card.querySelector('[data-action="favorite"]').addEventListener('click', () => toggleFavorite(entry.id));
@@ -735,6 +775,8 @@ function buildWishlistCard(item) {
       </div>
     </div>
   `;
+
+  applyCoverImage(card.querySelector('.card-cover'), cover, glyph);
 
   card.querySelector('.wishlist-log').addEventListener('click', () => {
     openModal(item);

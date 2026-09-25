@@ -70,6 +70,8 @@ const diarySummary = document.getElementById('diarySummary');
 const wishlistMain = document.getElementById('wishlistMain');
 const wishlistGrid = document.getElementById('wishlistGrid');
 const wishlistCount = document.getElementById('wishlistCount');
+const wishlistSearch = document.getElementById('wishlistSearch');
+const wishlistSort = document.getElementById('wishlistSort');
 const navHome   = document.getElementById('navHome');
 const navDiary  = document.getElementById('navDiary');
 const navWishlist = document.getElementById('navWishlist');
@@ -113,8 +115,8 @@ starPicker.addEventListener('mouseleave', () => setStarDisplay(currentRating));
 // (ported as-is from the original inline <script>, plus a
 // reset step so a new card doesn't inherit the last pick)
 // =========================================================
-function openModal({ title = 'Untitled', year = '', cover = '', id = '', genres = [] } = {}, existing = null) {
-  currentGame = { title, year, cover, id, genres };
+function openModal({ title = 'Untitled', year = '', cover = '', id = '', genres = [] } = {}, existing = null, fromWishlist = false) {
+  currentGame = { title, year, cover, id, genres, fromWishlist };
   editingEntryId = existing?.id || null;
 
   modalTitle.textContent = title;
@@ -232,6 +234,13 @@ function saveEntry() {
   persistEntries(entries);
   updateHomeStats();
   if (!diaryMain.hidden) renderDiary();
+
+  // Logging a wishlisted game moves it into the diary and out of the wishlist.
+  if (currentGame.fromWishlist) {
+    persistWishlist(getWishlist().filter(item => String(item.id) !== String(currentGame.id)));
+    renderWishlist();
+    document.querySelectorAll('[data-wishlist]').forEach(syncWishlistButton);
+  }
 
   const original = modalSaveBtn.textContent;
   modalSaveBtn.textContent = 'Saved ✓';
@@ -586,21 +595,41 @@ function buildTopRatedCard(entry) {
 function getWishlist() {
   try {
     const raw = JSON.parse(localStorage.getItem('gameDiaryWishlist')) || [];
-    return Array.isArray(raw) ? raw : [];
+    if (!Array.isArray(raw)) return [];
+
+    // Older versions could store duplicates; normalize them by game ID.
+    const seen = new Set();
+    return raw.filter(item => {
+      if (!item || item.id == null || String(item.id).trim() === '') return false;
+      const id = String(item.id);
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
   } catch {
     return [];
   }
 }
 
 function persistWishlist(items) {
-  localStorage.setItem('gameDiaryWishlist', JSON.stringify(items));
+  const seen = new Set();
+  const unique = (Array.isArray(items) ? items : []).filter(item => {
+    if (!item || item.id == null || String(item.id).trim() === '') return false;
+    const id = String(item.id);
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+  localStorage.setItem('gameDiaryWishlist', JSON.stringify(unique));
 }
 
 function toggleWishlist(game) {
   const items = getWishlist();
-  const exists = items.some(item => item.id === game.id);
-  persistWishlist(exists ? items.filter(item => item.id !== game.id) : [...items, game]);
+  const id = String(game.id);
+  const exists = items.some(item => String(item.id) === id);
+  persistWishlist(exists ? items.filter(item => String(item.id) !== id) : [...items, game]);
   renderWishlist();
+  document.querySelectorAll('[data-wishlist]').forEach(syncWishlistButton);
 }
 
 function syncWishlistButton(button) {
@@ -611,7 +640,7 @@ function syncWishlistButton(button) {
 }
 
 function removeFromWishlist(id) {
-  persistWishlist(getWishlist().filter(item => item.id !== id));
+  persistWishlist(getWishlist().filter(item => String(item.id) !== String(id)));
   renderWishlist();
   document.querySelectorAll('[data-wishlist]').forEach(btn => syncWishlistButton(btn));
 }
@@ -779,7 +808,7 @@ function buildWishlistCard(item) {
   applyCoverImage(card.querySelector('.card-cover'), cover, glyph);
 
   card.querySelector('.wishlist-log').addEventListener('click', () => {
-    openModal(item);
+    openModal(item, null, true);
   });
 
   card.querySelector('.wishlist-remove').addEventListener('click', () => {
@@ -792,15 +821,46 @@ function buildWishlistCard(item) {
 function renderWishlist() {
   if (!wishlistGrid) return;
 
-  const items = getWishlist();
-  wishlistGrid.innerHTML = '';
+  const allItems = getWishlist();
+  const query = (wishlistSearch?.value || '').trim().toLocaleLowerCase();
+  const sort = wishlistSort?.value || 'added';
+  let items = allItems.filter(item => {
+    const name = String(item.game || '').toLocaleLowerCase();
+    const year = String(item.year || '').toLocaleLowerCase();
+    return !query || name.includes(query) || year.includes(query);
+  });
 
-  if (wishlistCount) {
-    wishlistCount.textContent = items.length + ' ' + (items.length === 1 ? 'game' : 'games');
+  if (sort === 'name-a-z') {
+    items.sort((a, b) => String(a.game || '').localeCompare(String(b.game || '')));
+  } else if (sort === 'name-z-a') {
+    items.sort((a, b) => String(b.game || '').localeCompare(String(a.game || '')));
+  } else if (sort === 'year-newest') {
+    items.sort((a, b) => {
+      const ay = Number.parseInt(a.year, 10) || 0;
+      const by = Number.parseInt(b.year, 10) || 0;
+      return by - ay || String(a.game || '').localeCompare(String(b.game || ''));
+    });
+  } else if (sort === 'year-oldest') {
+    items.sort((a, b) => {
+      const ay = Number.parseInt(a.year, 10) || 0;
+      const by = Number.parseInt(b.year, 10) || 0;
+      return ay - by || String(a.game || '').localeCompare(String(b.game || ''));
+    });
   }
 
-  if (!items.length) {
+  wishlistGrid.innerHTML = '';
+  if (wishlistCount) {
+    wishlistCount.textContent = query
+      ? `${items.length} of ${allItems.length} games`
+      : `${allItems.length} ${allItems.length === 1 ? 'game' : 'games'}`;
+  }
+
+  if (!allItems.length) {
     wishlistGrid.innerHTML = '<p class="empty-state">Your wishlist is empty — add games from Home.</p>';
+    return;
+  }
+  if (!items.length) {
+    wishlistGrid.innerHTML = '<p class="empty-state">No wishlist games match your search.</p>';
     return;
   }
 
@@ -825,6 +885,9 @@ function showView(view) {
   if (isDiary) renderDiary();
   if (isWishlist) renderWishlist();
 }
+
+wishlistSearch?.addEventListener('input', renderWishlist);
+wishlistSort?.addEventListener('change', renderWishlist);
 
 diarySort?.addEventListener('change', renderDiary);
 diarySearch?.addEventListener('input', renderDiary);

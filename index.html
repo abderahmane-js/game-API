@@ -250,7 +250,23 @@
       </div>
       <span class="wishlist-count" id="wishlistCount">0 games</span>
     </div>
-    <div class="diary-grid" id="wishlistGrid"></div>
+    <div class="wishlist-toolbar" aria-label="Wishlist controls">
+      <label class="wishlist-search">
+        <span aria-hidden="true">⌕</span>
+        <input id="wishlistSearch" type="search" placeholder="Search your wishlist..." autocomplete="off" aria-label="Search wishlist">
+      </label>
+      <label class="sort-control">
+        <span>Sort</span>
+        <select id="wishlistSort" aria-label="Sort wishlist">
+          <option value="added">Recently added</option>
+          <option value="name-a-z">Name A–Z</option>
+          <option value="name-z-a">Name Z–A</option>
+          <option value="year-newest">Release year: newest</option>
+          <option value="year-oldest">Release year: oldest</option>
+        </select>
+      </label>
+    </div>
+    <div class="diary-grid" id="wishlistGrid" aria-live="polite"></div>
   </section>
 
   <footer class="site-footer">

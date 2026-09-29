@@ -550,3 +550,37 @@ input,textarea{font-family:inherit}
   .wishlist-search { flex-basis:100%; }
   .wishlist-toolbar .sort-control { justify-content:space-between; }
 }
+
+
+/* Functional, accessible mobile navigation */
+@media (max-width:640px) {
+  .header-inner { position:relative; gap:12px; padding:12px 16px; }
+  .header-nav {
+    display:none;
+    position:absolute;
+    top:calc(100% + 1px);
+    left:0;
+    right:0;
+    margin:0;
+    padding:12px 16px 16px;
+    background:rgba(18,18,18,.98);
+    border-bottom:1px solid var(--border);
+    box-shadow:0 12px 24px rgba(0,0,0,.28);
+    align-items:stretch;
+    flex-direction:column;
+    gap:8px;
+  }
+  .header-nav.is-open { display:flex; }
+  .header-nav .nav-link {
+    display:block;
+    padding:10px 4px;
+    border-bottom:0;
+    border-left:2px solid transparent;
+  }
+  .header-nav .nav-link.is-active {
+    border-left-color:var(--accent-green);
+    padding-left:10px;
+  }
+  .header-nav .avatar { display:none; }
+  .nav-toggle { margin-left:auto; }
+}

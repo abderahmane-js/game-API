@@ -75,6 +75,28 @@ const wishlistSort = document.getElementById('wishlistSort');
 const navHome   = document.getElementById('navHome');
 const navDiary  = document.getElementById('navDiary');
 const navWishlist = document.getElementById('navWishlist');
+const navToggle = document.querySelector('.nav-toggle');
+const headerNav = document.getElementById('headerNav');
+
+function setMobileNavOpen(open) {
+  headerNav?.classList.toggle('is-open', open);
+  navToggle?.setAttribute('aria-expanded', String(open));
+  navToggle?.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+}
+
+navToggle?.addEventListener('click', () => {
+  setMobileNavOpen(!headerNav?.classList.contains('is-open'));
+});
+
+document.addEventListener('click', event => {
+  if (!headerNav?.classList.contains('is-open')) return;
+  if (headerNav.contains(event.target) || navToggle?.contains(event.target)) return;
+  setMobileNavOpen(false);
+});
+
+window.addEventListener('resize', () => {
+  if (window.innerWidth > 640) setMobileNavOpen(false);
+});
 const statusSelect = document.getElementById('statusSelect');
 const favoriteCheck = document.getElementById('favoriteCheck');
 let editingEntryId = null;
@@ -152,6 +174,7 @@ function openModal({ title = 'Untitled', year = '', cover = '', id = '', genres 
 }
 
 async function closeModal() {
+  if (!overlay.classList.contains('is-open')) return;
   const modalEl = overlay.querySelector('.modal');
   const anims = [
     fx(overlay, [{ opacity: 1 }, { opacity: 0 }], { duration: 140 }),
@@ -900,31 +923,15 @@ diaryFavoritesOnly?.addEventListener('click', () => {
   renderDiary();
 });
 
-navHome.addEventListener('click', (e) => { e.preventDefault(); showView('home'); });
-navDiary.addEventListener('click', (e) => { e.preventDefault(); showView('diary'); });
-navWishlist.addEventListener('click', (e) => { e.preventDefault(); showView('wishlist'); });
-
-// ---- Home / My Diary / Wishlist view switching -------------------------
-function showView(view) {
-  const isDiary = view === 'diary';
-  const isWishlist = view === 'wishlist';
-
-  homeHero.hidden = isDiary || isWishlist;
-  homeMain.hidden = isDiary || isWishlist;
-  diaryMain.hidden = !isDiary;
-  wishlistMain.hidden = !isWishlist;
-
-  navHome.classList.toggle('is-active', !isDiary && !isWishlist);
-  navDiary.classList.toggle('is-active', isDiary);
-  navWishlist.classList.toggle('is-active', isWishlist);
-
-  if (isDiary) renderDiary();
-  if (isWishlist) renderWishlist();
+function navigateTo(view, event) {
+  event.preventDefault();
+  showView(view);
+  setMobileNavOpen(false);
 }
 
-navHome.addEventListener('click', (e) => { e.preventDefault(); showView('home'); });
-navDiary.addEventListener('click', (e) => { e.preventDefault(); showView('diary'); });
-navWishlist.addEventListener('click', (e) => { e.preventDefault(); showView('wishlist'); });
+navHome.addEventListener('click', e => navigateTo('home', e));
+navDiary.addEventListener('click', e => navigateTo('diary', e));
+navWishlist.addEventListener('click', e => navigateTo('wishlist', e));
 
 // =========================================================
 // RAWG fetch

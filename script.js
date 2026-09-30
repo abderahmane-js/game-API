@@ -498,15 +498,16 @@ function buildCard(game, index) {
 }
 
 function renderGames(gameList) {
-  const games = Array.isArray(gameList) && gameList.length ? gameList : FALLBACK_GAMES;
+  const games = Array.isArray(gameList) ? gameList : FALLBACK_GAMES;
 
   gameGrid.innerHTML = '';
+  if (!games.length) {
+    gameGrid.innerHTML = '<p class="empty-state">No recommendations found yet. Add a few highly rated games or wishlist titles to personalize your picks.</p>';
+    return;
+  }
+
   const fragment = document.createDocumentFragment();
-
-  games.forEach((game, index) => {
-    fragment.appendChild(buildCard(game, index));
-  });
-
+  games.forEach((game, index) => fragment.appendChild(buildCard(game, index)));
   gameGrid.appendChild(fragment);
   attachLogButtonListeners();
 }

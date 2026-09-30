@@ -936,6 +936,9 @@ navWishlist.addEventListener('click', e => navigateTo('wishlist', e));
 // =========================================================
 // RAWG fetch
 // =========================================================
+// =========================================================
+ // Personalized recommendations: weighted profile + quality ranking
+ // =========================================================
 const RAWG_GENRE_SLUGS = {
   action: 'action', adventure: 'adventure', indie: 'indie',
   'role-playing': 'role-playing-games-rpg', rpg: 'role-playing-games-rpg',
@@ -944,68 +947,158 @@ const RAWG_GENRE_SLUGS = {
   sports: 'sports', fighting: 'fighting'
 };
 
-function getPersonalRecommendationGenres() {
+function getRecommendationProfile() {
   const entries = getEntries();
   const wishlist = getWishlist();
-  const highlyRated = entries.filter(entry => Number(entry.rating) >= 8);
-  const seeds = [...highlyRated, ...wishlist];
-  const counts = new Map();
+  const positive = new Map();
+  const negative = new Map();
+  const likedGames = new Set();
 
-  seeds.forEach(game => {
-    getGenreNames(game.genres).forEach(name => {
-      const normalized = name.toLowerCase();
-      const slug = RAWG_GENRE_SLUGS[normalized] ||
-        (normalized === 'role playing' ? RAWG_GENRE_SLUGS['role-playing'] : null);
-      if (slug) counts.set(slug, (counts.get(slug) || 0) + (highlyRated.includes(game) ? 2 : 1));
+  const addFeatures = (game, weight, target) => {
+    const genres = getGenreNames(game.genres);
+    const tags = Array.isArray(game.tags) ? game.tags.map(tag =>
+      typeof tag === 'string' ? tag : tag?.name || ''
+    ) : [];
+    [...genres, ...tags].forEach(feature => {
+      const key = String(feature).trim().toLowerCase();
+      if (key) target.set(key, (target.get(key) || 0) + weight);
     });
+  };
+
+  entries.forEach(entry => {
+    const rating = Number(entry.rating) || 0;
+    const weight = rating >= 8 ? 1 + (rating - 8) * 0.75 : 0;
+    if (weight) {
+      addFeatures(entry, weight * (entry.favorite ? 1.25 : 1), positive);
+      likedGames.add(String(entry.id));
+    } else if (rating > 0 && rating <= 5) {
+      addFeatures(entry, (6 - rating) * 0.5, negative);
+    }
   });
 
-  return [...counts.entries()]
+  wishlist.forEach(game => {
+    addFeatures(game, 1.5, positive);
+    likedGames.add(String(game.id));
+  });
+
+  // A preference profile based on genre/tag overlap, not a brittle single-genre filter.
+  const total = [...positive.values()].reduce((sum, value) => sum + value, 0) || 1;
+  for (const [key, value] of positive) positive.set(key, value / total);
+
+  return { positive, negative, likedGames, hasProfile: positive.size > 0 };
+}
+
+function recommendationScore(game, profile) {
+  const features = [
+    ...getGenreNames(game.genres),
+    ...(Array.isArray(game.tags) ? game.tags.map(tag =>
+      typeof tag === 'string' ? tag : tag?.name || ''
+    ) : [])
+  ].map(value => String(value).trim().toLowerCase()).filter(Boolean);
+
+  const unique = [...new Set(features)];
+  const match = unique.reduce((sum, feature) => sum + (profile.positive.get(feature) || 0), 0);
+  const avoid = unique.reduce((sum, feature) => sum + (profile.negative.get(feature) || 0), 0);
+  const rating = Math.max(0, Math.min(5, Number(game.rating) || 0)) / 5;
+  const ratingCount = Math.max(0, Number(game.ratings_count) || 0);
+  // Smooth rating quality so one obscure, perfectly-rated game doesn't dominate.
+  const confidence = ratingCount / (ratingCount + 80);
+  const quality = (rating * confidence) + (0.65 * (1 - confidence));
+  return (match * 5) + (quality * 1.2) - (avoid * 2);
+}
+
+function diversifyRecommendations(games, profile, limit = 10) {
+  const excluded = new Set([
+    ...getEntries().map(game => String(game.id)),
+    ...getWishlist().map(game => String(game.id))
+  ]);
+  const candidates = games
+    .filter(game => game?.id != null && !excluded.has(String(game.id)))
+    .map(game => ({ game, score: recommendationScore(game, profile) }))
+    .sort((a, b) => b.score - a.score);
+
+  const selected = [];
+  const genreCounts = new Map();
+  while (candidates.length && selected.length < limit) {
+    let bestIndex = 0;
+    let bestScore = -Infinity;
+    candidates.forEach((candidate, index) => {
+      const genres = getGenreNames(candidate.game.genres);
+      const crowding = genres.reduce((sum, genre) => sum + (genreCounts.get(genre.toLowerCase()) || 0), 0);
+      const score = candidate.score - crowding * 0.18;
+      if (score > bestScore) { bestScore = score; bestIndex = index; }
+    });
+    const [chosen] = candidates.splice(bestIndex, 1);
+    selected.push(chosen.game);
+    getGenreNames(chosen.game.genres).forEach(genre => {
+      const key = genre.toLowerCase();
+      genreCounts.set(key, (genreCounts.get(key) || 0) + 1);
+    });
+  }
+  return selected;
+}
+
+async function fetchRecommendationPool(profile) {
+  const requests = [];
+  // Blend broad highly-rated discovery with genre-led discovery.
+  for (const page of [1, 2, 3]) {
+    const params = new URLSearchParams({
+      key: API_KEY, page_size: '40', ordering: '-rating', page: String(page)
+    });
+    requests.push(fetch(`${API_BASE}?${params.toString()}`));
+  }
+
+  const topGenres = [...profile.positive.entries()]
+    .filter(([feature]) => RAWG_GENRE_SLUGS[feature])
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3)
-    .map(([slug]) => slug);
+    .map(([feature]) => RAWG_GENRE_SLUGS[feature]);
+
+  if (topGenres.length) {
+    const params = new URLSearchParams({
+      key: API_KEY, page_size: '40', ordering: '-rating',
+      genres: [...new Set(topGenres)].join(',')
+    });
+    requests.push(fetch(`${API_BASE}?${params.toString()}`));
+  }
+
+  const responses = await Promise.all(requests);
+  const payloads = await Promise.all(responses.map(async response => {
+    if (!response.ok) return [];
+    const data = await response.json();
+    return Array.isArray(data.results) ? data.results : [];
+  }));
+  const unique = new Map();
+  payloads.flat().forEach(game => {
+    if (game?.id != null) unique.set(String(game.id), game);
+  });
+  return [...unique.values()];
 }
 
 async function fetchGames(query = '') {
   try {
-    const params = new URLSearchParams({ key: API_KEY, page_size: '20' });
-
     if (query) {
-      params.set('search', query);
+      const params = new URLSearchParams({ key: API_KEY, search: query, page_size: '20' });
+      const res = await fetch(`${API_BASE}?${params.toString()}`);
+      if (!res.ok) throw new Error(`RAWG request failed: ${res.status}`);
+      const data = await res.json();
+      renderGames(data.results || []);
+      return;
+    }
+
+    const profile = getRecommendationProfile();
+    const pool = await fetchRecommendationPool(profile);
+    const ranked = diversifyRecommendations(pool, profile, 10);
+
+    if (ranked.length) {
+      renderGames(ranked);
     } else {
-      const genres = getPersonalRecommendationGenres();
-      params.set('ordering', '-rating');
-      params.set('page', String(Math.floor(Math.random() * 5) + 1));
-      if (genres.length) params.set('genres', genres.join(','));
+      renderGames(FALLBACK_GAMES.filter(game =>
+        !profile.likedGames.has(String(game.id)) &&
+        !getEntries().some(entry => String(entry.id) === String(game.id)) &&
+        !getWishlist().some(item => String(item.id) === String(game.id))
+      ));
     }
-
-    const res = await fetch(`${API_BASE}?${params.toString()}`);
-    if (!res.ok) throw new Error(`RAWG request failed: ${res.status}`);
-
-    const data = await res.json();
-    let games = data.results && data.results.length ? data.results : FALLBACK_GAMES;
-
-    if (!query) {
-      const excluded = new Set([
-        ...getEntries().map(game => String(game.id)),
-        ...getWishlist().map(game => String(game.id))
-      ]);
-      games = games.filter(game => !excluded.has(String(game.id)));
-      if (!games.length) {
-        const fallbackParams = new URLSearchParams({
-          key: API_KEY, page_size: '20', ordering: '-rating',
-          page: String(Math.floor(Math.random() * 5) + 1)
-        });
-        const fallbackRes = await fetch(`${API_BASE}?${fallbackParams.toString()}`);
-        if (fallbackRes.ok) {
-          const fallbackData = await fallbackRes.json();
-          games = (fallbackData.results || FALLBACK_GAMES)
-            .filter(game => !excluded.has(String(game.id)));
-        }
-      }
-    }
-
-    renderGames(games.slice(0, 10));
   } catch (err) {
     console.warn('RAWG fetch failed, showing sample data instead:', err.message);
     const excluded = new Set([

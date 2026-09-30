@@ -936,33 +936,85 @@ navWishlist.addEventListener('click', e => navigateTo('wishlist', e));
 // =========================================================
 // RAWG fetch
 // =========================================================
+const RAWG_GENRE_SLUGS = {
+  action: 'action', adventure: 'adventure', indie: 'indie',
+  'role-playing': 'role-playing-games-rpg', rpg: 'role-playing-games-rpg',
+  platformer: 'platformer', puzzle: 'puzzle', strategy: 'strategy',
+  shooter: 'shooter', simulation: 'simulation', racing: 'racing',
+  sports: 'sports', fighting: 'fighting'
+};
+
+function getPersonalRecommendationGenres() {
+  const entries = getEntries();
+  const wishlist = getWishlist();
+  const highlyRated = entries.filter(entry => Number(entry.rating) >= 8);
+  const seeds = [...highlyRated, ...wishlist];
+  const counts = new Map();
+
+  seeds.forEach(game => {
+    getGenreNames(game.genres).forEach(name => {
+      const normalized = name.toLowerCase();
+      const slug = RAWG_GENRE_SLUGS[normalized] ||
+        (normalized === 'role playing' ? RAWG_GENRE_SLUGS['role-playing'] : null);
+      if (slug) counts.set(slug, (counts.get(slug) || 0) + (highlyRated.includes(game) ? 2 : 1));
+    });
+  });
+
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([slug]) => slug);
+}
+
 async function fetchGames(query = '') {
   try {
-    const params = new URLSearchParams({ key: API_KEY, page_size: '10' });
+    const params = new URLSearchParams({ key: API_KEY, page_size: '20' });
 
     if (query) {
       params.set('search', query);
     } else {
-      // No real diary data yet (favorites / rated games), so this is a
-      // stand-in: randomize the page of well-rated games each load.
+      const genres = getPersonalRecommendationGenres();
       params.set('ordering', '-rating');
       params.set('page', String(Math.floor(Math.random() * 5) + 1));
+      if (genres.length) params.set('genres', genres.join(','));
     }
 
-    const url = `${API_BASE}?${params.toString()}`;
-    const res = await fetch(url);
-
+    const res = await fetch(`${API_BASE}?${params.toString()}`);
     if (!res.ok) throw new Error(`RAWG request failed: ${res.status}`);
 
     const data = await res.json();
-    const games = data.results && data.results.length ? data.results : FALLBACK_GAMES;
-    renderGames(games);
+    let games = data.results && data.results.length ? data.results : FALLBACK_GAMES;
+
+    if (!query) {
+      const excluded = new Set([
+        ...getEntries().map(game => String(game.id)),
+        ...getWishlist().map(game => String(game.id))
+      ]);
+      games = games.filter(game => !excluded.has(String(game.id)));
+      if (!games.length) {
+        const fallbackParams = new URLSearchParams({
+          key: API_KEY, page_size: '20', ordering: '-rating',
+          page: String(Math.floor(Math.random() * 5) + 1)
+        });
+        const fallbackRes = await fetch(`${API_BASE}?${fallbackParams.toString()}`);
+        if (fallbackRes.ok) {
+          const fallbackData = await fallbackRes.json();
+          games = (fallbackData.results || FALLBACK_GAMES)
+            .filter(game => !excluded.has(String(game.id)));
+        }
+      }
+    }
+
+    renderGames(games.slice(0, 10));
   } catch (err) {
     console.warn('RAWG fetch failed, showing sample data instead:', err.message);
-    renderGames(FALLBACK_GAMES);
+    const excluded = new Set([
+      ...getEntries().map(game => String(game.id)),
+      ...getWishlist().map(game => String(game.id))
+    ]);
+    renderGames(FALLBACK_GAMES.filter(game => !excluded.has(String(game.id))));
   }
 }
-
 
 // =========================================================
 // Search autocomplete / suggestions

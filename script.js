@@ -50,7 +50,7 @@ const reviewText     = document.getElementById('reviewText');
 const playedBeforeCheck = document.getElementById('playedBeforeCheck');
 const completedCheck = document.getElementById('completedCheck');
 const modalSaveBtn   = document.getElementById('modalSave');
-let currentGame = { title: '', year: '', cover: '', id: '', genres: [] };
+let currentGame = { title: '', year: '', cover: '', id: '', genres: [], tags: [] };
 const starPicker  = document.getElementById('starPicker');
 const starFill    = document.getElementById('starFill');
 const starHitlayer = document.getElementById('starHitlayer');
@@ -137,8 +137,8 @@ starPicker.addEventListener('mouseleave', () => setStarDisplay(currentRating));
 // (ported as-is from the original inline <script>, plus a
 // reset step so a new card doesn't inherit the last pick)
 // =========================================================
-function openModal({ title = 'Untitled', year = '', cover = '', id = '', genres = [] } = {}, existing = null, fromWishlist = false) {
-  currentGame = { title, year, cover, id, genres, fromWishlist };
+function openModal({ title = 'Untitled', year = '', cover = '', id = '', genres = [], tags = [] } = {}, existing = null, fromWishlist = false) {
+  currentGame = { title, year, cover, id, genres, tags, fromWishlist };
   editingEntryId = existing?.id || null;
 
   modalTitle.textContent = title;
@@ -211,6 +211,7 @@ function normalizeEntry(entry) {
     ...entry,
     id: entry.id || (entry.game || 'game') + '-' + (entry.year || ''),
     genres: getGenreNames(entry.genres?.length ? entry.genres : (entry.genre ? [entry.genre] : [])),
+    tags: Array.isArray(entry.tags) ? entry.tags.map(normalizeTagName).filter(Boolean) : [],
     rating: Number(entry.rating) || 0,
     review: entry.review || '',
     status: entry.status || (entry.completed ? 'completed' : 'backlog'),
@@ -237,6 +238,7 @@ function saveEntry() {
     cover: currentGame.cover,
     // Keep saved genres when the current API result has none.
     genres: getGenreNames(currentGame.genres?.length ? currentGame.genres : (previous?.genres || [])),
+    tags: Array.isArray(currentGame.tags) ? currentGame.tags : (previous?.tags || []),
     rating: currentRating,
     review: reviewText.value.trim(),
     playedBefore: playedBeforeCheck.checked,
@@ -286,6 +288,7 @@ function editEntry(id) {
     cover: entry.cover,
     id: entry.id,
     genres: entry.genres,
+    tags: entry.tags,
   }, entry);
 }
 
@@ -324,27 +327,37 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal
 // =========================================================
 async function hydrateMissingGenres() {
   const entries = getEntries();
-  const missing = entries.filter(entry => !getGenreNames(entry.genres) .length && entry.id);
+  const missing = entries.filter(entry => entry.id && (
+    !getGenreNames(entry.genres).length || !getEntryTags(entry).length
+  ));
   if (!missing.length) return;
 
   let changed = false;
   for (const entry of missing) {
     try {
-      const numericId = /^\\d+$/.test(String(entry.id));
+      const numericId = /^\d+$/.test(String(entry.id));
       const endpoint = numericId ? API_BASE + '/' + encodeURIComponent(entry.id) : API_BASE;
       const params = new URLSearchParams({ key: API_KEY });
       if (!numericId) {
         params.set('search', entry.game || '');
         params.set('page_size', '1');
       }
+
       const res = await fetch(endpoint + '?' + params.toString());
       if (!res.ok) continue;
       const data = await res.json();
-      const genres = numericId
-        ? getGenreNames(data.genres)
-        : getGenreNames(data.results?.[0]?.genres);
-      if (genres.length) {
+      const game = numericId ? data : data.results?.[0];
+      if (!game) continue;
+
+      const genres = getGenreNames(game.genres);
+      const tags = Array.isArray(game.tags) ? game.tags.map(normalizeTagName).filter(Boolean) : [];
+
+      if (genres.length && !getGenreNames(entry.genres).length) {
         entry.genres = genres;
+        changed = true;
+      }
+      if (tags.length && !getEntryTags(entry).length) {
+        entry.tags = tags;
         changed = true;
       }
     } catch {}
@@ -541,6 +554,52 @@ function attachLogButtonListeners() {
 // =========================================================
 // Home stats — calculated from the user's diary
 // =========================================================
+function normalizeTagName(tag) {
+  if (typeof tag === 'string') return tag.trim();
+  if (tag && typeof tag === 'object') return String(tag.name || '').trim();
+  return '';
+}
+
+function getEntryTags(entry) {
+  return Array.isArray(entry.tags) ? entry.tags.map(normalizeTagName).filter(Boolean) : [];
+}
+
+function hasTag(tags, ...needles) {
+  return needles.some(needle => tags.some(tag => {
+    const normalized = tag.toLowerCase().replace(/[–—]/g, '-');
+    return normalized === needle || normalized.includes(needle);
+  }));
+}
+
+function getFavoriteStyle(entries) {
+  const scores = {};
+
+  entries.forEach(entry => {
+    const genres = getGenreNames(entry.genres).map(genre => genre.toLowerCase());
+    const tags = getEntryTags(entry).map(tag => tag.toLowerCase());
+    const all = [...genres, ...tags];
+    const hasAction = all.some(value => value === 'action' || value.includes('action'));
+    const hasAdventure = all.some(value => value === 'adventure');
+    const hasRpg = all.some(value => value === 'rpg' || value.includes('role-playing'));
+    const isOpenWorld = hasTag(tags, 'open-world', 'open world');
+    const weight = Number(entry.rating) > 0 ? Number(entry.rating) : 1;
+
+    let style = null;
+    if (isOpenWorld) style = 'Open World';
+    else if (hasAction && hasAdventure) style = 'Action-Adventure';
+    else if (hasAction && hasRpg) style = 'Action RPG';
+    else if (hasAction) style = 'Action';
+    else if (hasAdventure) style = 'Adventure';
+    else if (hasRpg) style = 'RPG';
+    else if (genres[0]) style = getGenreNames(entry.genres)[0];
+
+    if (style) scores[style] = (scores[style] || 0) + weight;
+  });
+
+  return Object.entries(scores)
+    .sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A';
+}
+
 function updateHomeStats() {
   const entries = getEntries();
 
@@ -560,17 +619,7 @@ function updateHomeStats() {
     avgEl.textContent = average === null ? 'N/A' : average.toFixed(1);
   }
 
-  const genreCounts = {};
-  entries.forEach(entry => {
-    (Array.isArray(entry.genres) ? entry.genres : []).forEach(genre => {
-      if (!genre) return;
-      genreCounts[genre] = (genreCounts[genre] || 0) + 1;
-    });
-  });
-
-  const topGenre = Object.entries(genreCounts)
-    .sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A';
-  if (genreEl) genreEl.textContent = topGenre;
+  if (genreEl) genreEl.textContent = getFavoriteStyle(entries);
 
   if (shelfEl) {
     shelfEl.innerHTML = '';

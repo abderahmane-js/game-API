@@ -496,11 +496,19 @@ input,textarea{font-family:inherit}
   }
   .diary-summary { justify-content:flex-start; }
 }
+.backup-controls {
+  display:flex;
+  gap:6px;
+  margin-left:auto;
+}
+
 @media (max-width:640px) {
   .diary-toolbar { align-items:stretch; }
   .diary-search { flex-basis:100%; }
   .diary-actions { flex-wrap:wrap; }
   .diary-action { min-width:0; }
+  .backup-controls { margin-left:0; width:100%; }
+  .backup-controls .filter-toggle { flex:1; }
 }
 
 /* Shared, resilient cover-art layer */

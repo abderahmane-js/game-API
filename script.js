@@ -713,6 +713,79 @@ function buildDiaryCard(entry) {
   return card;
 }
 
+function exportDiaryBackup() {
+  const payload = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    entries: getEntries(),
+    wishlist: getWishlist(),
+  };
+
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  const date = new Date().toISOString().slice(0, 10);
+  link.href = url;
+  link.download = `game-diary-backup-${date}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function validateBackup(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  if (!Array.isArray(payload.entries) || !Array.isArray(payload.wishlist)) return null;
+
+  const entries = payload.entries
+    .filter(entry => entry && typeof entry === 'object')
+    .map(normalizeEntry)
+    .filter(entry => entry.game);
+
+  const wishlist = payload.wishlist
+    .filter(item => item && typeof item === 'object' && item.id != null && item.game)
+    .map(item => ({
+      ...item,
+      id: String(item.id),
+      game: String(item.game),
+      year: item.year || 'Unknown',
+      cover: item.cover || '',
+      genres: getGenreNames(item.genres),
+    }));
+
+  return { entries, wishlist };
+}
+
+async function importDiaryBackup(file) {
+  if (!file) return;
+
+  try {
+    const text = await file.text();
+    const payload = JSON.parse(text);
+    const backup = validateBackup(payload);
+
+    if (!backup) {
+      alert('That file is not a valid Game Diary backup.');
+      return;
+    }
+
+    const confirmed = confirm(
+      `Import ${backup.entries.length} diary entries and ${backup.wishlist.length} wishlist games? This will replace your current local data.`
+    );
+    if (!confirmed) return;
+
+    persistEntries(backup.entries);
+    persistWishlist(backup.wishlist);
+    updateHomeStats();
+    renderDiary();
+    renderWishlist();
+    document.querySelectorAll('[data-wishlist]').forEach(syncWishlistButton);
+    alert('Game Diary backup imported successfully.');
+  } catch {
+    alert('Could not read that backup file.');
+  }
+}
+
 function renderDiary() {
   const entries = getEntries();
   diaryGrid.innerHTML = '';
@@ -922,6 +995,18 @@ diaryFavoritesOnly?.addEventListener('click', () => {
   diaryFavoritesOnly.setAttribute('aria-pressed', String(!active));
   diaryFavoritesOnly.classList.toggle('is-active', !active);
   renderDiary();
+});
+
+document.getElementById('exportDiary')?.addEventListener('click', exportDiaryBackup);
+
+document.getElementById('importDiary')?.addEventListener('click', () => {
+  document.getElementById('importDiaryFile')?.click();
+});
+
+document.getElementById('importDiaryFile')?.addEventListener('change', event => {
+  const file = event.target.files?.[0];
+  importDiaryBackup(file);
+  event.target.value = '';
 });
 
 function navigateTo(view, event) {

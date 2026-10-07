@@ -237,6 +237,11 @@
       </label>
 
       <button class="filter-toggle" id="diaryFavoritesOnly" type="button" aria-pressed="false">♡ Favorites</button>
+      <div class="backup-controls" aria-label="Diary backup">
+        <button class="filter-toggle" id="exportDiary" type="button">Export</button>
+        <button class="filter-toggle" id="importDiary" type="button">Import</button>
+        <input id="importDiaryFile" type="file" accept=".json,application/json" hidden>
+      </div>
     </div>
 
     <div class="diary-grid" id="diaryGrid"></div>

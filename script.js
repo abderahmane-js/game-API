@@ -483,8 +483,9 @@ function buildCard(game, index) {
   logBtn.dataset.cover = game.background_image
     ? `url('${game.background_image}')`
     : COVER_FALLBACKS[index % COVER_FALLBACKS.length];
-  logBtn.dataset.genres = JSON.stringify(
-    getGenreNames(game.genres)
+  logBtn.dataset.genres = JSON.stringify(getGenreNames(game.genres));
+  logBtn.dataset.tags = JSON.stringify(
+    Array.isArray(game.tags) ? game.tags.map(normalizeTagName).filter(Boolean) : []
   );
 
   wishlistBtn.dataset.id = game.id;
@@ -494,6 +495,7 @@ function buildCard(game, index) {
     ? "url('" + game.background_image + "')"
     : COVER_FALLBACKS[index % COVER_FALLBACKS.length];
   wishlistBtn.dataset.genres = logBtn.dataset.genres;
+  wishlistBtn.dataset.tags = logBtn.dataset.tags;
   syncWishlistButton(wishlistBtn);
 
   // Hover lift + log-overlay fade (replaces the old CSS :hover transitions).
@@ -534,6 +536,7 @@ function attachLogButtonListeners() {
       cover: btn.dataset.cover,
       id: btn.dataset.id,
       genres: JSON.parse(btn.dataset.genres || '[]'),
+      tags: JSON.parse(btn.dataset.tags || '[]'),
     }));
   });
 
